@@ -1,0 +1,27 @@
+using System;
+using System.IO;
+using Microsoft.SqlServer.Dts.Runtime;
+using System.Windows.Forms;
+
+public void Main()
+{
+    try
+    {
+        // Get the file path from the variable
+        string filePath = Dts.Variables["User::SQLFilePath"].Value.ToString();
+
+        // Read the file content
+        string fileContent = File.ReadAllText(filePath);
+
+        // Assign the file content to the variable
+        Dts.Variables["User::SQLFileContent"].Value = fileContent;
+
+        Dts.TaskResult = (int)ScriptResults.Success;
+    }
+    catch (Exception ex)
+    {
+        // Display the error message
+        MessageBox.Show("Error reading SQL file: " + ex.Message);
+        Dts.TaskResult = (int)ScriptResults.Failure;
+    }
+}
