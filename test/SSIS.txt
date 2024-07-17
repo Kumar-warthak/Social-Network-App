@@ -25,3 +25,30 @@ public void Main()
         Dts.TaskResult = (int)ScriptResults.Failure;
     }
 }
+
+
+import requests
+import urllib.parse
+
+def fetch_via_proxy(proxy_url, target_url):
+    # Encode the target URL to handle special characters
+    encoded_target_url = urllib.parse.quote(target_url, safe=':/?#=@', encoding='utf-8')
+
+    full_proxy_url = f"{proxy_url}/{encoded_target_url}"
+
+    try:
+        response = requests.get(full_proxy_url)
+
+        if response.status_code == 200:
+            print("Proxy response:", response.text)
+        else:
+            print("Error:", response.status_code)
+
+    except requests.RequestException as e:
+        print("Request Error:", e)
+
+# Example usage
+proxy_url = "http://proxy.example.com"
+target_url = "http://username:password#@target.example.com#fragment"
+
+fetch_via_proxy(proxy_url, target_url)
