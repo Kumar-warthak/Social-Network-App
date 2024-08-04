@@ -1,54 +1,59 @@
 using System;
+using System.Data;
 using System.IO;
 using Microsoft.SqlServer.Dts.Runtime;
-using System.Windows.Forms;
+using System.Text;
 
 public void Main()
 {
-    try
+    // Define file path
+    string filePath = Dts.Variables["User::FilePath"].Value.ToString();
+
+    // Read all lines from the CSV file
+    var lines = File.ReadAllLines(filePath);
+
+    // Split the header line
+    var header = lines[0].Split(',');
+
+    // Rename columns in the header if needed
+    for (int i = 0; i < header.Length; i++)
     {
-        // Get the file path from the variable
-        string filePath = Dts.Variables["User::SQLFilePath"].Value.ToString();
-
-        // Read the file content
-        string fileContent = File.ReadAllText(filePath);
-
-        // Assign the file content to the variable
-        Dts.Variables["User::SQLFileContent"].Value = fileContent;
-
-        Dts.TaskResult = (int)ScriptResults.Success;
+        if (header[i] == "OldDateColumn")
+        {
+            header[i] = "NewDateColumn";
+        }
+        if (header[i] == "OldColumnName1")
+        {
+            header[i] = "NewColumnName1";
+        }
+        if (header[i] == "OldColumnName2")
+        {
+            header[i] = "NewColumnName2";
+        }
+        // Add more column renames as needed
     }
-    catch (Exception ex)
+
+    // Write back the updated header
+    lines[0] = string.Join(",", header);
+
+    // Process each data line
+    for (int i = 1; i < lines.Length; i++)
     {
-        // Display the error message
-        MessageBox.Show("Error reading SQL file: " + ex.Message);
-        Dts.TaskResult = (int)ScriptResults.Failure;
+        var columns = lines[i].Split(',');
+
+        // Assuming date is in the first column
+        DateTime dateValue;
+        if (DateTime.TryParse(columns[0], out dateValue))
+        {
+            columns[0] = dateValue.ToString("MM/dd/yyyy");
+        }
+
+        // Join the columns back into a line
+        lines[i] = string.Join(",", columns);
     }
+
+    // Write all lines back to the file
+    File.WriteAllLines(filePath, lines, Encoding.UTF8);
+
+    Dts.TaskResult = (int)ScriptResults.Success;
 }
-
-
-import requests
-import urllib.parse
-
-def fetch_via_proxy(proxy_url, target_url):
-    # Encode the target URL to handle special characters
-    encoded_target_url = urllib.parse.quote(target_url, safe=':/?#=@', encoding='utf-8')
-
-    full_proxy_url = f"{proxy_url}/{encoded_target_url}"
-
-    try:
-        response = requests.get(full_proxy_url)
-
-        if response.status_code == 200:
-            print("Proxy response:", response.text)
-        else:
-            print("Error:", response.status_code)
-
-    except requests.RequestException as e:
-        print("Request Error:", e)
-
-# Example usage
-proxy_url = "http://proxy.example.com"
-target_url = "http://username:password#@target.example.com#fragment"
-
-fetch_via_proxy(proxy_url, target_url)
