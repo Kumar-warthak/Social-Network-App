@@ -62,10 +62,10 @@ public void Main()
 
 using System;
 using System.Data;
-using System.Data.SqlClient;
+using System.Data.OleDb;
 using System.IO;
 using Microsoft.SqlServer.Dts.Runtime;
-using System.Text;
+using System.Linq; // Make sure to include this namespace
 
 public void Main()
 {
@@ -77,20 +77,20 @@ public void Main()
     var lines = File.ReadAllLines(tempFilePath);
 
     // Prepare the SQL insert command
-    string sqlInsert = "INSERT INTO YourTableName (NewDateColumn, NewColumnName1, NewColumnName2) VALUES (@NewDateColumn, @NewColumnName1, @NewColumnName2)";
+    string sqlInsert = "INSERT INTO YourTableName (NewDateColumn, NewColumnName1, NewColumnName2) VALUES (?, ?, ?)";
 
-    using (SqlConnection conn = new SqlConnection(connectionString))
+    using (OleDbConnection conn = new OleDbConnection(connectionString))
     {
         conn.Open();
         foreach (var line in lines.Skip(1)) // Skip the header line
         {
             var columns = line.Split(',');
 
-            using (SqlCommand cmd = new SqlCommand(sqlInsert, conn))
+            using (OleDbCommand cmd = new OleDbCommand(sqlInsert, conn))
             {
-                cmd.Parameters.AddWithValue("@NewDateColumn", columns[0]);
-                cmd.Parameters.AddWithValue("@NewColumnName1", columns[1]);
-                cmd.Parameters.AddWithValue("@NewColumnName2", columns[2]);
+                cmd.Parameters.AddWithValue("?", columns[0]);
+                cmd.Parameters.AddWithValue("?", columns[1]);
+                cmd.Parameters.AddWithValue("?", columns[2]);
                 // Add more parameters as needed
 
                 cmd.ExecuteNonQuery();
