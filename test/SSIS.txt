@@ -147,3 +147,58 @@ void ProcessDataAndWriteToCsv(DataTable dataTable)
     }
 }
 
+int batchSize = 10000; // Number of rows per batch
+int offset = 0;
+
+while (true)
+{
+    DataTable dataTable = new DataTable();
+    
+    using (OleDbConnection connection = new OleDbConnection("Your Oracle OLEDB Connection String"))
+    {
+        connection.Open();
+        
+        // Using ROWNUM for batch processing in Oracle
+        string query = $@"
+            SELECT *
+            FROM (
+                SELECT a.*, ROWNUM rnum
+                FROM (SELECT * FROM YourTable WHERE Id > {offset} ORDER BY Id) a
+                WHERE ROWNUM <= {batchSize}
+            )
+            WHERE rnum > {offset}";
+
+        using (OleDbCommand command = new OleDbCommand(query, connection))
+        {
+            using (OleDbDataAdapter adapter = new OleDbDataAdapter(command))
+            {
+                adapter.Fill(dataTable);
+            }
+        }
+    }
+    
+    if (dataTable.Rows.Count == 0)
+        break; // Exit loop if no more data
+    
+    // Process your data and write to CSV
+    ProcessDataAndWriteToCsv(dataTable);
+    
+    // Update offset for the next batch
+    offset += batchSize;
+}
+
+void ProcessDataAndWriteToCsv(DataTable dataTable)
+{
+    // Your logic to write data to CSV
+    // Ensure to handle any potential exceptions
+    try
+    {
+        // Writing data to CSV logic
+    }
+    catch (Exception ex)
+    {
+        // Log the exception details
+        Dts.Events.FireError(0, "Script Task", ex.Message, string.Empty, 0);
+        Dts.TaskResult = (int)ScriptResults.Failure;
+    }
+}
