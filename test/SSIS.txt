@@ -1,71 +1,10 @@
 using System;
 using System.Data;
-using System.IO;
-using Microsoft.SqlServer.Dts.Runtime;
-using System.Text;
-
-public void Main()
-{
-    // Define file path
-    string filePath = Dts.Variables["User::FilePath"].Value.ToString();
-
-    // Read all lines from the CSV file
-    var lines = File.ReadAllLines(filePath);
-
-    // Split the header line
-    var header = lines[0].Split(',');
-
-    // Rename columns in the header if needed
-    for (int i = 0; i < header.Length; i++)
-    {
-        if (header[i] == "OldDateColumn")
-        {
-            header[i] = "NewDateColumn";
-        }
-        if (header[i] == "OldColumnName1")
-        {
-            header[i] = "NewColumnName1";
-        }
-        if (header[i] == "OldColumnName2")
-        {
-            header[i] = "NewColumnName2";
-        }
-        // Add more column renames as needed
-    }
-
-    // Write back the updated header
-    lines[0] = string.Join(",", header);
-
-    // Process each data line
-    for (int i = 1; i < lines.Length; i++)
-    {
-        var columns = lines[i].Split(',');
-
-        // Assuming date is in the first column
-        DateTime dateValue;
-        if (DateTime.TryParse(columns[0], out dateValue))
-        {
-            columns[0] = dateValue.ToString("MM/dd/yyyy");
-        }
-
-        // Join the columns back into a line
-        lines[i] = string.Join(",", columns);
-    }
-
-    // Write all lines back to the file
-    File.WriteAllLines(filePath, lines, Encoding.UTF8);
-
-    Dts.TaskResult = (int)ScriptResults.Success;
-}
-
-
-
-using System;
-using System.Data;
 using System.Data.OleDb;
+using System.Globalization;
 using System.IO;
-using Microsoft.SqlServer.Dts.Runtime;
-using System.Linq; // Make sure to include this namespace
+using System.Linq;
+using System.Windows.Forms;  // Add reference to System.Windows.Forms for MessageBox
 
 public void Main()
 {
@@ -76,152 +15,60 @@ public void Main()
     // Read all lines from the temporary CSV file
     var lines = File.ReadAllLines(tempFilePath);
 
-    // Prepare the SQL insert command
-    string sqlInsert = "INSERT INTO YourTableName (NewDateColumn, NewColumnName1, NewColumnName2) VALUES (?, ?, ?)";
-
     using (OleDbConnection conn = new OleDbConnection(connectionString))
     {
         conn.Open();
+
+        // Set the NLS_DATE_FORMAT for the session
+        using (OleDbCommand setDateFormatCmd = new OleDbCommand("ALTER SESSION SET NLS_DATE_FORMAT = 'MM/DD/YYYY'", conn))
+        {
+            setDateFormatCmd.ExecuteNonQuery();
+        }
+
+        // Prepare SQL insert command template
+        string sqlInsertTemplate = "INSERT INTO YourTableName (NewDateColumn, Column2, Column3, Column4, Column5, " +
+                                   "Column6, Column7, Column8, Column9, Column10, Column11, Column12, Column13, " +
+                                   "Column14, Column15, Column16, Column17, Column18, Column19, Column20) VALUES ({0})";
+
         foreach (var line in lines.Skip(1)) // Skip the header line
         {
             var columns = line.Split(',');
 
+            // Trim all columns
+            for (int i = 0; i < columns.Length; i++)
+            {
+                columns[i] = columns[i].Trim();
+            }
+
+            // Parse and format the date column with leading zeros
+            DateTime dateValue;
+            if (DateTime.TryParseExact(columns[0], "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out dateValue))
+            {
+                columns[0] = dateValue.ToString("MM/dd/yyyy"); // Ensures leading zeros
+            }
+            else
+            {
+                throw new Exception("Date format is invalid: " + columns[0]);
+            }
+
+            // Escape single quotes in columns to avoid SQL syntax errors
+            for (int i = 0; i < columns.Length; i++)
+            {
+                columns[i] = columns[i].Replace("'", "''");
+            }
+
+            // Construct the SQL insert statement with actual values
+            string sqlInsert = string.Format(sqlInsertTemplate, string.Join(", ", columns.Select(col => $"'{col}'")));
+
+            // Show the full SQL insert statement in a message box
+            MessageBox.Show(sqlInsert, "SQL Insert Statement");
+
             using (OleDbCommand cmd = new OleDbCommand(sqlInsert, conn))
             {
-                cmd.Parameters.AddWithValue("?", columns[0]);
-                cmd.Parameters.AddWithValue("?", columns[1]);
-                cmd.Parameters.AddWithValue("?", columns[2]);
-                // Add more parameters as needed
-
                 cmd.ExecuteNonQuery();
             }
         }
     }
-
-    Dts.TaskResult = (int)ScriptResults.Success;
-}
-
-int batchSize = 10000; // Number of rows per batch
-int offset = 0;
-
-while (true)
-{
-    DataTable dataTable = new DataTable();
-    
-    using (OleDbConnection connection = new OleDbConnection("Your Connection String"))
-    {
-        connection.Open();
-        
-        using (OleDbCommand command = new OleDbCommand($"SELECT TOP {batchSize} * FROM YourTable WHERE Id > {offset}", connection))
-        {
-            using (OleDbDataAdapter adapter = new OleDbDataAdapter(command))
-            {
-                adapter.Fill(dataTable);
-            }
-        }
-    }
-    
-    if (dataTable.Rows.Count == 0)
-        break; // Exit loop if no more data
-    
-    // Process your data and write to CSV
-    ProcessDataAndWriteToCsv(dataTable);
-    
-    // Update offset for the next batch
-    offset += batchSize;
-}
-
-void ProcessDataAndWriteToCsv(DataTable dataTable)
-{
-    // Your logic to write data to CSV
-    // Ensure to handle any potential exceptions
-    try
-    {
-        // Writing data to CSV logic
-    }
-    catch (Exception ex)
-    {
-        // Log the exception details
-        Dts.Events.FireError(0, "Script Task", ex.Message, string.Empty, 0);
-        Dts.TaskResult = (int)ScriptResults.Failure;
-    }
-}
-
-int batchSize = 10000; // Number of rows per batch
-int offset = 0;
-
-while (true)
-{
-    DataTable dataTable = new DataTable();
-    
-    using (OleDbConnection connection = new OleDbConnection("Your Oracle OLEDB Connection String"))
-    {
-        connection.Open();
-        
-        // Using ROWNUM for batch processing in Oracle
-        string query = $@"
-            SELECT *
-            FROM (
-                SELECT a.*, ROWNUM rnum
-                FROM (SELECT * FROM YourTable WHERE Id > {offset} ORDER BY Id) a
-                WHERE ROWNUM <= {batchSize}
-            )
-            WHERE rnum > {offset}";
-
-        using (OleDbCommand command = new OleDbCommand(query, connection))
-        {
-            using (OleDbDataAdapter adapter = new OleDbDataAdapter(command))
-            {
-                adapter.Fill(dataTable);
-            }
-        }
-    }
-    
-    if (dataTable.Rows.Count == 0)
-        break; // Exit loop if no more data
-    
-    // Process your data and write to CSV
-    ProcessDataAndWriteToCsv(dataTable);
-    
-    // Update offset for the next batch
-    offset += batchSize;
-}
-
-void ProcessDataAndWriteToCsv(DataTable dataTable)
-{
-    // Your logic to write data to CSV
-    // Ensure to handle any potential exceptions
-    try
-    {
-        // Writing data to CSV logic
-    }
-    catch (Exception ex)
-    {
-        // Log the exception details
-        Dts.Events.FireError(0, "Script Task", ex.Message, string.Empty, 0);
-        Dts.TaskResult = (int)ScriptResults.Failure;
-    }
-}
-using System;
-using System.IO;
-using System.Text;
-
-public void Main()
-{
-    // Define the output CSV file path
-    string outputFile = @"C:\Path\To\Your\File.csv";
-    
-    // Sample date
-    DateTime sampleDate = DateTime.Now; // Or get your date from the SSIS pipeline
-
-    // Format the date with leading zeros
-    string formattedDate = sampleDate.ToString("MM/dd/yyyy");
-
-    // Prepare your CSV line
-    string csvLine = $"\"{formattedDate}\""; // Add other fields as needed
-
-    // Write to the CSV file
-    File.WriteAllText(outputFile, csvLine, Encoding.UTF8);
 
     Dts.TaskResult = (int)ScriptResults.Success;
 }
