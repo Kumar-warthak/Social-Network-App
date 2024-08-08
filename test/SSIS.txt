@@ -202,3 +202,26 @@ void ProcessDataAndWriteToCsv(DataTable dataTable)
         Dts.TaskResult = (int)ScriptResults.Failure;
     }
 }
+using System;
+using System.IO;
+using System.Text;
+
+public void Main()
+{
+    // Define the output CSV file path
+    string outputFile = @"C:\Path\To\Your\File.csv";
+    
+    // Sample date
+    DateTime sampleDate = DateTime.Now; // Or get your date from the SSIS pipeline
+
+    // Format the date with leading zeros
+    string formattedDate = sampleDate.ToString("MM/dd/yyyy");
+
+    // Prepare your CSV line
+    string csvLine = $"\"{formattedDate}\""; // Add other fields as needed
+
+    // Write to the CSV file
+    File.WriteAllText(outputFile, csvLine, Encoding.UTF8);
+
+    Dts.TaskResult = (int)ScriptResults.Success;
+}
