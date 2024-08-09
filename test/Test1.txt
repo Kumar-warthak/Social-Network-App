@@ -1,90 +1,90 @@
-iiusing OfficeOpenXml;
-using System.Data;
+using System;
 using System.IO;
+using System.Data;
+using System.Data.OleDb;
+using Microsoft.SqlServer.Dts.Runtime;
 
-public void ConvertExcelToCSV(string sourceFolder, string destinationFolder)
+public void Main()
 {
-    string[] excelFiles = Directory.GetFiles(sourceFolder, "*.xlsx");
+    // Folder containing Excel files
+    string excelFolder = @"C:\Path\To\Excel\Files";
+    // Folder to save CSV files
+    string csvFolder = @"C:\Path\To\CSV\Files";
+
+    // Get all Excel files in the folder
+    string[] excelFiles = Directory.GetFiles(excelFolder, "*.xlsx");
+
     foreach (string excelFile in excelFiles)
     {
-        FileInfo fileInfo = new FileInfo(excelFile);
-        using (ExcelPackage package = new ExcelPackage(fileInfo))
+        try
         {
-            ExcelWorksheet worksheet = package.Workbook.Worksheets[0];
-            DataTable dt = new DataTable();
-            foreach (var firstRowCell in worksheet.Cells[1, 1, 1, worksheet.Dimension.End.Column])
-            {
-                dt.Columns.Add(firstRowCell.Text);
-            }
+            // Create a connection string to the Excel file
+            string excelConnectionString = $"Provider=Microsoft.ACE.OLEDB.12.0;Data Source={excelFile};Extended Properties=\"Excel 12.0 Xml;HDR=YES;\"";
 
-            for (int rowNum = 2; rowNum <= worksheet.Dimension.End.Row; rowNum++)
+            using (OleDbConnection connection = new OleDbConnection(excelConnectionString))
             {
-                var wsRow = worksheet.Cells[rowNum, 1, rowNum, worksheet.Dimension.End.Column];
-                DataRow row = dt.NewRow();
-                foreach (var cell in wsRow)
-                {
-                    row[cell.Start.Column - 1] = cell.Text;
-                }
-                dt.Rows.Add(row);
-            }
+                connection.Open();
 
-            string csvFilePath = Path.Combine(destinationFolder, Path.GetFileNameWithoutExtension(excelFile) + ".csv");
-            using (StreamWriter writer = new StreamWriter(csvFilePath))
-            {
-                foreach (DataRow dr in dt.Rows)
+                // Get the sheet names in the Excel file
+                DataTable sheetDataTable = connection.GetOleDbSchemaTable(OleDbSchemaGuid.Tables, null);
+
+                foreach (DataRow row in sheetDataTable.Rows)
                 {
-                    writer.WriteLine(string.Join(",", dr.ItemArray));
+                    string sheetName = row["TABLE_NAME"].ToString();
+
+                    // Skip any internal sheets like print areas
+                    if (!sheetName.EndsWith("$")) continue;
+
+                    // Load the data from the sheet
+                    string query = $"SELECT * FROM [{sheetName}]";
+                    OleDbDataAdapter adapter = new OleDbDataAdapter(query, connection);
+                    DataTable dataTable = new DataTable();
+                    adapter.Fill(dataTable);
+
+                    // Define CSV file name
+                    string csvFileName = Path.Combine(csvFolder, Path.GetFileNameWithoutExtension(excelFile) + "_" + sheetName.TrimEnd('$') + ".csv");
+
+                    // Save the DataTable to a CSV file
+                    SaveDataTableToCsv(dataTable, csvFileName);
                 }
             }
         }
+        catch (Exception ex)
+        {
+            // Log any errors (customize as needed)
+            Dts.Events.FireError(0, "Script Task", ex.Message, string.Empty, 0);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+        }
     }
-}using System.IO.Compression;
-using System.IO;
 
-public void UnzipFiles(string sourceFolder, string destinationFolder)
-{
-    string[] zipFiles = Directory.GetFiles(sourceFolder, "*.zip");
-    foreach (string zipFile in zipFiles)
-    {
-        string extractPath = Path.Combine(destinationFolder, Path.GetFileNameWithoutExtension(zipFile));
-        ZipFile.ExtractToDirectory(zipFile, extractPath);
-    }
+    Dts.TaskResult = (int)ScriptResults.Success;
 }
 
-using System.IO;
-using System.IO.Compression;
-
-// Path to the folder containing the ZIP files
-string sourceFolder = @"C:\example\zipfiles";
-// Path to extract files
-string extractFolder = @"C:\example\extract";
-
-// Get all ZIP files in the source folder
-string[] zipFiles = Directory.GetFiles(sourceFolder, "*.zip");
-
-foreach (string zipPath in zipFiles)
+private void SaveDataTableToCsv(DataTable dataTable, string filePath)
 {
-    string fileName = Path.GetFileNameWithoutExtension(zipPath);
-    string extractPath = Path.Combine(extractFolder, fileName);
-
-    // Create the directory for this ZIP file if it doesn't exist
-    Directory.CreateDirectory(extractPath);
-
-    // Open the ZIP file
-    using (FileStream zipToOpen = new FileStream(zipPath, FileMode.Open))
+    using (StreamWriter writer = new StreamWriter(filePath))
     {
-        using (ZipArchive archive = new ZipArchive(zipToOpen, ZipArchiveMode.Read))
+        // Write column headers
+        for (int i = 0; i < dataTable.Columns.Count; i++)
         {
-            foreach (ZipArchiveEntry entry in archive.Entries)
+            writer.Write(dataTable.Columns[i]);
+
+            if (i < dataTable.Columns.Count - 1)
+                writer.Write(",");
+        }
+        writer.WriteLine();
+
+        // Write rows
+        foreach (DataRow row in dataTable.Rows)
+        {
+            for (int i = 0; i < dataTable.Columns.Count; i++)
             {
-                string destinationPath = Path.Combine(extractPath, entry.FullName);
+                writer.Write(row[i].ToString());
 
-                // Create the directory if it doesn't exist
-                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
-
-                // Extract the file
-                entry.Open().CopyTo(File.Create(destinationPath));
+                if (i < dataTable.Columns.Count - 1)
+                    writer.Write(",");
             }
+            writer.WriteLine();
         }
     }
 }
