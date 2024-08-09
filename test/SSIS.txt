@@ -3,8 +3,7 @@ using System.Data;
 using System.Data.OleDb;
 using System.Globalization;
 using System.IO;
-using System.Linq;
-using Microsoft.VisualBasic.FileIO; // Add reference to Microsoft.VisualBasic
+using System.Text.RegularExpressions;
 
 public void Main()
 {
@@ -31,26 +30,21 @@ public void Main()
         // Open the output CSV file for writing
         using (StreamWriter writer = new StreamWriter(outputCsvFilePath, false)) // false to overwrite the file if it exists
         {
-            // Read the CSV file using TextFieldParser
-            using (TextFieldParser parser = new TextFieldParser(tempFilePath))
+            // Read the CSV file line by line
+            using (StreamReader sr = new StreamReader(tempFilePath))
             {
-                parser.TextFieldType = FieldType.Delimited;
-                parser.SetDelimiters(",");
+                string headerLine = sr.ReadLine(); // Skip header line
 
-                // Skip the header line
-                if (!parser.EndOfData)
+                string line;
+                while ((line = sr.ReadLine()) != null)
                 {
-                    parser.ReadLine();
-                }
+                    // Split line using regex to handle commas inside quotes
+                    var columns = Regex.Split(line, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
 
-                while (!parser.EndOfData)
-                {
-                    string[] columns = parser.ReadFields();
-
-                    // Trim all columns
+                    // Remove quotes and trim all columns
                     for (int i = 0; i < columns.Length; i++)
                     {
-                        columns[i] = columns[i].Trim();
+                        columns[i] = columns[i].Trim().Trim('"');
                     }
 
                     // Parse and format the date column with leading zeros
