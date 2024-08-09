@@ -1,4 +1,4 @@
-using OfficeOpenXml;
+iiusing OfficeOpenXml;
 using System.Data;
 using System.IO;
 
@@ -37,5 +37,16 @@ public void ConvertExcelToCSV(string sourceFolder, string destinationFolder)
                 }
             }
         }
+    }
+}using System.IO.Compression;
+using System.IO;
+
+public void UnzipFiles(string sourceFolder, string destinationFolder)
+{
+    string[] zipFiles = Directory.GetFiles(sourceFolder, "*.zip");
+    foreach (string zipFile in zipFiles)
+    {
+        string extractPath = Path.Combine(destinationFolder, Path.GetFileNameWithoutExtension(zipFile));
+        ZipFile.ExtractToDirectory(zipFile, extractPath);
     }
 }
