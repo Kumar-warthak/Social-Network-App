@@ -1,78 +1,70 @@
 using System;
 using System.Data;
 using System.Data.OleDb;
-using System.Globalization;
+using System.Data.OracleClient; // Ensure you have OracleClient installed or use Oracle.ManagedDataAccess.Client
 using System.IO;
-using System.Linq;
+using Microsoft.SqlServer.Dts.Runtime;
+using Microsoft.VisualBasic.FileIO;
 
 public void Main()
 {
-    // Define file paths and connection string
-    string tempFilePath = Dts.Variables["User::TempFilePath"].Value.ToString();
-    string outputCsvFilePath = Dts.Variables["User::OutputCsvFilePath"].Value.ToString();
-    string connectionString = Dts.Variables["User::ConnectionString"].Value.ToString();
+    // Variables
+    string csvFilePath = Dts.Variables["User::CSVFilePath"].Value.ToString();
+    string oracleConnectionString = Dts.Variables["User::OracleConnectionString"].Value.ToString();
 
-    // Read all lines from the temporary CSV file
-    var lines = File.ReadAllLines(tempFilePath);
-
-    using (OleDbConnection conn = new OleDbConnection(connectionString))
+    // Read CSV file
+    DataTable csvData = new DataTable();
+    try
     {
-        conn.Open();
-
-        // Set the NLS_DATE_FORMAT for the session
-        using (OleDbCommand setDateFormatCmd = new OleDbCommand("ALTER SESSION SET NLS_DATE_FORMAT = 'MM/DD/YYYY'", conn))
+        using (TextFieldParser parser = new TextFieldParser(csvFilePath))
         {
-            setDateFormatCmd.ExecuteNonQuery();
+            parser.TextFieldType = FieldType.Delimited;
+            parser.SetDelimiters(",");
+            parser.HasFieldsEnclosedInQuotes = true;
+            parser.TrimWhiteSpace = true;
+
+            // Load CSV header
+            string[] headers = parser.ReadFields();
+            foreach (string header in headers)
+            {
+                csvData.Columns.Add(header);
+            }
+
+            // Load CSV data rows
+            while (!parser.EndOfData)
+            {
+                string[] fields = parser.ReadFields();
+                csvData.Rows.Add(fields);
+            }
         }
 
-        // Prepare SQL insert command template
-        string sqlInsertTemplate = "INSERT INTO YourTableName (NewDateColumn, Column2, Column3, Column4, Column5, " +
-                                   "Column6, Column7, Column8, Column9, Column10, Column11, Column12, Column13, " +
-                                   "Column14, Column15, Column16, Column17, Column18, Column19, Column20) VALUES ({0})";
-
-        // Open the output CSV file for writing
-        using (StreamWriter writer = new StreamWriter(outputCsvFilePath, false)) // false to overwrite the file if it exists
+        // Insert data into Oracle DB
+        using (OracleConnection conn = new OracleConnection(oracleConnectionString))
         {
-            foreach (var line in lines.Skip(1)) // Skip the header line
+            conn.Open();
+            foreach (DataRow row in csvData.Rows)
             {
-                var columns = line.Split(',');
-
-                // Trim all columns
-                for (int i = 0; i < columns.Length; i++)
+                using (OracleCommand cmd = new OracleCommand())
                 {
-                    columns[i] = columns[i].Trim();
-                }
+                    cmd.Connection = conn;
+                    cmd.CommandText = "INSERT INTO YourTable (Column1, Column2, Column3) VALUES (:1, :2, :3)";
 
-                // Parse and format the date column with leading zeros
-                DateTime dateValue;
-                if (DateTime.TryParseExact(columns[0], "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out dateValue))
-                {
-                    columns[0] = dateValue.ToString("MM/dd/yyyy"); // Ensures leading zeros
-                }
-                else
-                {
-                    throw new Exception("Date format is invalid: " + columns[0]);
-                }
+                    // Map each column to parameters
+                    for (int i = 0; i < csvData.Columns.Count; i++)
+                    {
+                        cmd.Parameters.Add(new OracleParameter($":{i + 1}", row[i]));
+                    }
 
-                // Escape single quotes in columns to avoid SQL syntax errors
-                for (int i = 0; i < columns.Length; i++)
-                {
-                    columns[i] = columns[i].Replace("'", "''");
-                }
-
-                // Construct the SQL insert statement with actual values
-                string sqlInsert = string.Format(sqlInsertTemplate, string.Join(", ", columns.Select(col => $"'{col}'")));
-
-                // Write the SQL insert statement to the output CSV file
-                writer.WriteLine(sqlInsert);
-
-                // Execute the SQL insert statement
-                using (OleDbCommand cmd = new OleDbCommand(sqlInsert, conn))
-                {
                     cmd.ExecuteNonQuery();
                 }
             }
         }
+    }
+    catch (Exception ex)
+    {
+        Dts.Events.FireError(0, "Script Task", ex.Message + "\r" + ex.StackTrace, string.Empty, 0);
+        Dts.TaskResult = (int)ScriptResults.Failure;
+        return;
     }
 
     Dts.TaskResult = (int)ScriptResults.Success;
