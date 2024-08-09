@@ -50,3 +50,41 @@ public void UnzipFiles(string sourceFolder, string destinationFolder)
         ZipFile.ExtractToDirectory(zipFile, extractPath);
     }
 }
+
+using System.IO;
+using System.IO.Compression;
+
+// Path to the folder containing the ZIP files
+string sourceFolder = @"C:\example\zipfiles";
+// Path to extract files
+string extractFolder = @"C:\example\extract";
+
+// Get all ZIP files in the source folder
+string[] zipFiles = Directory.GetFiles(sourceFolder, "*.zip");
+
+foreach (string zipPath in zipFiles)
+{
+    string fileName = Path.GetFileNameWithoutExtension(zipPath);
+    string extractPath = Path.Combine(extractFolder, fileName);
+
+    // Create the directory for this ZIP file if it doesn't exist
+    Directory.CreateDirectory(extractPath);
+
+    // Open the ZIP file
+    using (FileStream zipToOpen = new FileStream(zipPath, FileMode.Open))
+    {
+        using (ZipArchive archive = new ZipArchive(zipToOpen, ZipArchiveMode.Read))
+        {
+            foreach (ZipArchiveEntry entry in archive.Entries)
+            {
+                string destinationPath = Path.Combine(extractPath, entry.FullName);
+
+                // Create the directory if it doesn't exist
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
+
+                // Extract the file
+                entry.Open().CopyTo(File.Create(destinationPath));
+            }
+        }
+    }
+}
