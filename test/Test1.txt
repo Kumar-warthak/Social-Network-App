@@ -1,90 +1,33 @@
 using System;
 using System.IO;
-using System.Data;
-using System.Data.OleDb;
 using Microsoft.SqlServer.Dts.Runtime;
 
 public void Main()
 {
-    // Folder containing Excel files
-    string excelFolder = @"C:\Path\To\Excel\Files";
-    // Folder to save CSV files
-    string csvFolder = @"C:\Path\To\CSV\Files";
+    // Folder containing the files
+    string folderPath = @"C:\Path\To\Your\Folder";
 
-    // Get all Excel files in the folder
-    string[] excelFiles = Directory.GetFiles(excelFolder, "*.xls");
+    // Get all files in the folder
+    string[] files = Directory.GetFiles(folderPath, "*.xls");
 
-    foreach (string excelFile in excelFiles)
+    foreach (string file in files)
     {
         try
         {
-            // Create a connection string to the Excel file
-            string excelConnectionString = $"Provider=Microsoft.Jet.OLEDB.4.0;Data Source={excelFile};Extended Properties=\"Excel 8.0;HDR=YES;\"";
-
-            using (OleDbConnection connection = new OleDbConnection(excelConnectionString))
-            {
-                connection.Open();
-
-                // Get the sheet names in the Excel file
-                DataTable sheetDataTable = connection.GetOleDbSchemaTable(OleDbSchemaGuid.Tables, null);
-
-                foreach (DataRow row in sheetDataTable.Rows)
-                {
-                    string sheetName = row["TABLE_NAME"].ToString();
-
-                    // Skip any internal sheets like print areas
-                    if (!sheetName.EndsWith("$")) continue;
-
-                    // Load the data from the sheet
-                    string query = $"SELECT * FROM [{sheetName}]";
-                    OleDbDataAdapter adapter = new OleDbDataAdapter(query, connection);
-                    DataTable dataTable = new DataTable();
-                    adapter.Fill(dataTable);
-
-                    // Define CSV file name
-                    string csvFileName = Path.Combine(csvFolder, Path.GetFileNameWithoutExtension(excelFile) + "_" + sheetName.TrimEnd('$') + ".csv");
-
-                    // Save the DataTable to a CSV file
-                    SaveDataTableToCsv(dataTable, csvFileName);
-                }
-            }
+            // Define new file name with .csv extension
+            string newFileName = Path.ChangeExtension(file, ".csv");
+            
+            // Rename the file
+            File.Move(file, newFileName);
         }
         catch (Exception ex)
         {
             // Log any errors (customize as needed)
             Dts.Events.FireError(0, "Script Task", ex.Message, string.Empty, 0);
             Dts.TaskResult = (int)ScriptResults.Failure;
+            return;
         }
     }
 
     Dts.TaskResult = (int)ScriptResults.Success;
-}
-
-private void SaveDataTableToCsv(DataTable dataTable, string filePath)
-{
-    using (StreamWriter writer = new StreamWriter(filePath))
-    {
-        // Write column headers
-        for (int i = 0; i < dataTable.Columns.Count; i++)
-        {
-            writer.Write(dataTable.Columns[i]);
-
-            if (i < dataTable.Columns.Count - 1)
-                writer.Write(",");
-        }
-        writer.WriteLine();
-
-        // Write rows
-        foreach (DataRow row in dataTable.Rows)
-        {
-            for (int i = 0; i < dataTable.Columns.Count; i++)
-            {
-                writer.Write(row[i].ToString());
-
-                if (i < dataTable.Columns.Count - 1)
-                    writer.Write(",");
-            }
-            writer.WriteLine();
-        }
-    }
 }
