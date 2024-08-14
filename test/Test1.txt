@@ -3,6 +3,7 @@ using System.Data;
 using System.IO;
 using System.Globalization;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Microsoft.SqlServer.Dts.Runtime;
 
 public void Main()
@@ -21,7 +22,7 @@ public void Main()
         string line;
         while ((line = reader.ReadLine()) != null)
         {
-            // Split the line manually, taking quotes into account
+            // Split the line using a regular expression to handle quotes correctly
             var columns = ParseCsvLine(line);
 
             // Handle the header row to change column names
@@ -67,39 +68,18 @@ public void Main()
     Dts.TaskResult = (int)ScriptResults.Success;
 }
 
-// Method to parse a CSV line while considering quotes
+// Method to parse a CSV line while considering quotes using a regular expression
 private string[] ParseCsvLine(string line)
 {
+    // This regular expression matches CSV values considering quoted fields
+    string csvPattern = @"(?:^|,)(?:""(?<val>(?:[^""]|"""")*)""|(?<val>[^,""]*))";
+    var matches = Regex.Matches(line, csvPattern);
     var result = new List<string>();
-    bool inQuotes = false;
-    var value = string.Empty;
 
-    for (int i = 0; i < line.Length; i++)
+    foreach (Match match in matches)
     {
-        char c = line[i];
-
-        if (c == '\"')
-        {
-            // Toggle inQuotes when encountering a quote character
-            inQuotes = !inQuotes;
-        }
-        else if (c == ',' && !inQuotes)
-        {
-            // If a comma is encountered outside quotes, treat it as a delimiter
-            result.Add(value);
-            value = string.Empty;
-        }
-        else
-        {
-            // Accumulate the current character in the value
-            value += c;
-        }
-
-        // Handle the case where the line ends and we're inside quotes
-        if (i == line.Length - 1)
-        {
-            result.Add(value);
-        }
+        // Add the captured value, removing any escaped quotes
+        result.Add(match.Groups["val"].Value.Replace("\"\"", "\""));
     }
 
     return result.ToArray();
