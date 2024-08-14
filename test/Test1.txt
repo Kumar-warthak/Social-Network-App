@@ -31,3 +31,61 @@ public void Main()
 
     Dts.TaskResult = (int)ScriptResults.Success;
 }
+
+using System;
+using System.IO;
+using System.Globalization;
+using System.Collections.Generic;
+using Microsoft.SqlServer.Dts.Runtime;
+using Microsoft.VisualBasic.FileIO;
+
+public void Main()
+{
+    // Define the path to your input and output CSV files
+    string inputFilePath = Dts.Variables["User::InputFilePath"].Value.ToString();
+    string outputFilePath = Dts.Variables["User::OutputFilePath"].Value.ToString();
+
+    // Prepare a list to hold the modified lines
+    var newLines = new List<string>();
+
+    // Use TextFieldParser to read the CSV file correctly
+    using (TextFieldParser parser = new TextFieldParser(inputFilePath))
+    {
+        parser.TextFieldType = FieldType.Delimited;
+        parser.SetDelimiters(",");
+
+        while (!parser.EndOfData)
+        {
+            // Read fields from the current line
+            string[] columns = parser.ReadFields();
+
+            // Assuming the date column is in the first position, modify as needed
+            if (!string.IsNullOrWhiteSpace(columns[0])) // Check if the column is not blank or null
+            {
+                DateTime parsedDate;
+                if (DateTime.TryParse(columns[0], out parsedDate))
+                {
+                    // Convert the date to the desired format (MM/dd/yyyy)
+                    columns[0] = parsedDate.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+                }
+                else
+                {
+                    // If parsing fails, manually remove the time portion
+                    columns[0] = columns[0].Split(' ')[0];
+                    if (DateTime.TryParse(columns[0], out parsedDate))
+                    {
+                        columns[0] = parsedDate.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+                    }
+                }
+            }
+
+            // Reconstruct the line with the modified date
+            newLines.Add(string.Join(",", columns));
+        }
+    }
+
+    // Write the new lines to the output CSV file
+    File.WriteAllLines(outputFilePath, newLines);
+
+    Dts.TaskResult = (int)ScriptResults.Success;
+}
