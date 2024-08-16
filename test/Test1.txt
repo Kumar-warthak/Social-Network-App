@@ -1,8 +1,8 @@
 using System;
-using System.Data;
 using System.IO;
 using Microsoft.SqlServer.Dts.Runtime;
 using System.Text.RegularExpressions;
+using System.Collections.Generic;
 
 public void Main()
 {
@@ -10,25 +10,51 @@ public void Main()
     string inputFilePath = @"C:\path\to\your\inputfile.csv";
     string outputFilePath = @"C:\path\to\your\outputfile.csv";
 
+    // Define the column name mappings (existing name => new name)
+    Dictionary<string, string> columnMappings = new Dictionary<string, string>
+    {
+        { "OldColumnName1", "NewColumnName1" },
+        { "OldColumnName2", "NewColumnName2" },
+        { "OldColumnName3", "NewColumnName3" }
+        // Add more mappings as needed
+    };
+
     // Read all lines from the input file
     string[] lines = File.ReadAllLines(inputFilePath);
 
     // Open the output file to write
     using (StreamWriter writer = new StreamWriter(outputFilePath))
     {
+        bool isHeader = true;
+
         // Process each line
         foreach (string line in lines)
         {
             // Handle commas within quotes (preserve commas within quoted fields)
             string[] fields = Regex.Split(line, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
 
-            // Assuming the date is in the first column (adjust the index as needed)
-            string dateValue = fields[0];
-
-            // Parse and reformat the date (adjust the date format as needed)
-            if (DateTime.TryParse(dateValue, out DateTime date))
+            if (isHeader)
             {
-                fields[0] = date.ToString("MM/dd/yyyy");
+                // Rename columns in the header line
+                for (int i = 0; i < fields.Length; i++)
+                {
+                    if (columnMappings.ContainsKey(fields[i]))
+                    {
+                        fields[i] = columnMappings[fields[i]];
+                    }
+                }
+                isHeader = false; // After processing header line, switch flag
+            }
+            else
+            {
+                // Assuming the date is in the first column (adjust the index as needed)
+                string dateValue = fields[0];
+
+                // Parse and reformat the date (adjust the date format as needed)
+                if (DateTime.TryParse(dateValue, out DateTime date))
+                {
+                    fields[0] = date.ToString("MM/dd/yyyy");
+                }
             }
 
             // Join the fields back into a single line
