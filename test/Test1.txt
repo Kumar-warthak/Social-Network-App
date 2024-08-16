@@ -68,3 +68,7 @@ public void Main()
     // Mark the Script Task as successful
     Dts.TaskResult = (int)ScriptResults.Success;
 }
+
+(DT_WSTR, 10) (MONTH(DATEADD("DAY", -1 * ((DATEPART("DW", GETDATE()) + 1) % 7) - 2, GETDATE()))) + "/" +
+RIGHT("0" + (DT_WSTR, 2) DAY(DATEADD("DAY", -1 * ((DATEPART("DW", GETDATE()) + 1) % 7) - 2, GETDATE())), 2) + "/" +
+(DT_WSTR, 4) YEAR(DATEADD("DAY", -1 * ((DATEPART("DW", GETDATE()) + 1) % 7) - 2, GETDATE()))
