@@ -3,7 +3,6 @@ using System.Data;
 using System.IO;
 using System.Globalization;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using Microsoft.SqlServer.Dts.Runtime;
 
 public void Main()
@@ -22,13 +21,13 @@ public void Main()
         string line;
         while ((line = reader.ReadLine()) != null)
         {
-            // Split the line using a regular expression to handle quotes correctly
-            var columns = ParseCsvLine(line);
+            // Manually parse the line, respecting quotes
+            var columns = ManuallyParseCsvLine(line);
 
             // Handle the header row to change column names
             if (isFirstLine)
             {
-                for (int i = 0; i < columns.Length; i++)
+                for (int i = 0; i < columns.Count; i++)
                 {
                     columns[i] = GetNewColumnName(columns[i]);
                 }
@@ -68,21 +67,35 @@ public void Main()
     Dts.TaskResult = (int)ScriptResults.Success;
 }
 
-// Method to parse a CSV line while considering quotes using a regular expression
-private string[] ParseCsvLine(string line)
+// Method to manually parse a CSV line, handling quotes and commas correctly
+private List<string> ManuallyParseCsvLine(string line)
 {
-    // This regular expression matches CSV values considering quoted fields
-    string csvPattern = @"(?:^|,)(?:""(?<val>(?:[^""]|"""")*)""|(?<val>[^,""]*))";
-    var matches = Regex.Matches(line, csvPattern);
     var result = new List<string>();
+    bool inQuotes = false;
+    var value = string.Empty;
 
-    foreach (Match match in matches)
+    for (int i = 0; i < line.Length; i++)
     {
-        // Add the captured value, removing any escaped quotes
-        result.Add(match.Groups["val"].Value.Replace("\"\"", "\""));
+        char c = line[i];
+
+        if (c == '\"')
+        {
+            inQuotes = !inQuotes; // Toggle inQuotes when encountering a quote character
+        }
+        else if (c == ',' && !inQuotes)
+        {
+            result.Add(value); // Add the accumulated value to the result list
+            value = string.Empty; // Reset the value for the next column
+        }
+        else
+        {
+            value += c; // Append the current character to the value
+        }
     }
 
-    return result.ToArray();
+    result.Add(value); // Add the last accumulated value to the result list
+
+    return result;
 }
 
 // Method to get the new column name based on the existing name
