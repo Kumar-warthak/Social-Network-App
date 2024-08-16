@@ -1,116 +1,44 @@
 using System;
 using System.Data;
 using System.IO;
-using System.Globalization;
-using System.Collections.Generic;
 using Microsoft.SqlServer.Dts.Runtime;
+using System.Text.RegularExpressions;
 
 public void Main()
 {
-    // Define the path to your input and output CSV files
-    string inputFilePath = Dts.Variables["User::InputFilePath"].Value.ToString();
-    string outputFilePath = Dts.Variables["User::OutputFilePath"].Value.ToString();
+    // Define the file paths
+    string inputFilePath = @"C:\path\to\your\inputfile.csv";
+    string outputFilePath = @"C:\path\to\your\outputfile.csv";
 
-    // Prepare a list to hold the modified lines
-    var newLines = new List<string>();
-    bool isFirstLine = true;
+    // Read all lines from the input file
+    string[] lines = File.ReadAllLines(inputFilePath);
 
-    // Read the input CSV file line by line
-    using (StreamReader reader = new StreamReader(inputFilePath))
+    // Open the output file to write
+    using (StreamWriter writer = new StreamWriter(outputFilePath))
     {
-        string line;
-        while ((line = reader.ReadLine()) != null)
+        // Process each line
+        foreach (string line in lines)
         {
-            // Manually parse the line, respecting quotes
-            var columns = ManuallyParseCsvLine(line);
+            // Handle commas within quotes (preserve commas within quoted fields)
+            string[] fields = Regex.Split(line, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
 
-            // Handle the header row to change column names
-            if (isFirstLine)
+            // Assuming the date is in the first column (adjust the index as needed)
+            string dateValue = fields[0];
+
+            // Parse and reformat the date (adjust the date format as needed)
+            if (DateTime.TryParse(dateValue, out DateTime date))
             {
-                for (int i = 0; i < columns.Count; i++)
-                {
-                    columns[i] = GetNewColumnName(columns[i]);
-                }
-                isFirstLine = false;
-            }
-            else
-            {
-                // Assuming the date column is in the first position, modify as needed
-                if (!string.IsNullOrWhiteSpace(columns[0])) // Check if the column is not blank or null
-                {
-                    DateTime parsedDate;
-                    if (DateTime.TryParse(columns[0], out parsedDate))
-                    {
-                        // Convert the date to the desired format (MM/dd/yyyy)
-                        columns[0] = parsedDate.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
-                    }
-                    else
-                    {
-                        // If parsing fails, manually remove the time portion
-                        columns[0] = columns[0].Split(' ')[0];
-                        if (DateTime.TryParse(columns[0], out parsedDate))
-                        {
-                            columns[0] = parsedDate.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
-                        }
-                    }
-                }
+                fields[0] = date.ToString("MM/dd/yyyy");
             }
 
-            // Reconstruct the line with the modified date and/or column names
-            newLines.Add(string.Join(",", columns));
+            // Join the fields back into a single line
+            string newLine = string.Join(",", fields);
+
+            // Write the line to the output file
+            writer.WriteLine(newLine);
         }
     }
 
-    // Write the new lines to the output CSV file
-    File.WriteAllLines(outputFilePath, newLines);
-
+    // Mark the Script Task as successful
     Dts.TaskResult = (int)ScriptResults.Success;
-}
-
-// Method to manually parse a CSV line, handling quotes and commas correctly
-private List<string> ManuallyParseCsvLine(string line)
-{
-    var result = new List<string>();
-    bool inQuotes = false;
-    var value = string.Empty;
-
-    for (int i = 0; i < line.Length; i++)
-    {
-        char c = line[i];
-
-        if (c == '\"')
-        {
-            inQuotes = !inQuotes; // Toggle inQuotes when encountering a quote character
-        }
-        else if (c == ',' && !inQuotes)
-        {
-            result.Add(value); // Add the accumulated value to the result list
-            value = string.Empty; // Reset the value for the next column
-        }
-        else
-        {
-            value += c; // Append the current character to the value
-        }
-    }
-
-    result.Add(value); // Add the last accumulated value to the result list
-
-    return result;
-}
-
-// Method to get the new column name based on the existing name
-private string GetNewColumnName(string existingName)
-{
-    // Example: Change column names based on existing names
-    switch (existingName.Trim().ToLower())
-    {
-        case "oldname1":
-            return "NewName1";
-        case "oldname2":
-            return "NewName2";
-        case "date":
-            return "FormattedDate";
-        default:
-            return existingName; // Keep the original name if no match is found
-    }
 }
