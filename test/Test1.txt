@@ -1,30 +1,7 @@
-using System;
-using System.IO;
-using Microsoft.SqlServer.Dts.Runtime;
-
-public void Main()
-{
-    // Get the folder path from the SSIS variable
-    string folderPath = Dts.Variables["User::FolderPath"].Value.ToString();
-    
-    // Get all the files in the directory
-    string[] files = Directory.GetFiles(folderPath);
-
-    // Loop through each file
-    foreach (string file in files)
-    {
-        // Get the file name
-        string fileName = Path.GetFileName(file);
-        
-        // Assign the file name to the SSIS variable
-        Dts.Variables["User::CurrentFileName"].Value = fileName;
-        
-        // Optionally, perform other operations with the file name here
-        
-        // For demonstration, you can log the file name (if you want to see it in SSIS logs)
-        Dts.Events.FireInformation(0, "File Name", fileName, "", 0, ref fireAgain);
-    }
-
-    // Mark the Script Task as successful
-    Dts.TaskResult = (int)ScriptResults.Success;
-}
+@or(
+    equals(item()?['Name'], 'File1.csv'),
+    equals(item()?['Name'], 'File2.csv'),
+    equals(item()?['Name'], 'File3.csv'),
+    equals(item()?['Name'], 'File4.csv'),
+    equals(item()?['Name'], 'File5.csv')
+)
