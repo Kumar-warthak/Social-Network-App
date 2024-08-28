@@ -1,7 +1,44 @@
-@or(
-    equals(item()?['Name'], 'File1.csv'),
-    equals(item()?['Name'], 'File2.csv'),
-    equals(item()?['Name'], 'File3.csv'),
-    equals(item()?['Name'], 'File4.csv'),
-    equals(item()?['Name'], 'File5.csv')
-)
+using System;
+using System.Data;
+using System.IO;
+using Microsoft.SqlServer.Dts.Runtime;
+using System.Text.RegularExpressions;
+
+public void Main()
+{
+    // Define the file paths
+    string inputFilePath = @"C:\path\to\your\inputfile.csv";
+    string outputFilePath = @"C:\path\to\your\outputfile.csv";
+
+    // Read all lines from the input file
+    string[] lines = File.ReadAllLines(inputFilePath);
+
+    // Open the output file to write
+    using (StreamWriter writer = new StreamWriter(outputFilePath))
+    {
+        // Process each line
+        foreach (string line in lines)
+        {
+            // Handle commas within quotes (preserve commas within quoted fields)
+            string[] fields = Regex.Split(line, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
+
+            // Assuming the date is in the first column (adjust the index as needed)
+            string dateValue = fields[0];
+
+            // Parse and reformat the date (adjust the date format as needed)
+            if (DateTime.TryParse(dateValue, out DateTime date))
+            {
+                fields[0] = date.ToString("MM/dd/yyyy");
+            }
+
+            // Join the fields back into a single line
+            string newLine = string.Join(",", fields);
+
+            // Write the line to the output file
+            writer.WriteLine(newLine);
+        }
+    }
+
+    // Mark the Script Task as successful
+    Dts.TaskResult = (int)ScriptResults.Success;
+}
