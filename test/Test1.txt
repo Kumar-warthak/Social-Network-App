@@ -18,11 +18,15 @@ BEGIN
     DECLARE @reference_id BIGINT;
     
     -- Get the environment reference ID
-    SELECT @reference_id = reference_id 
-    FROM [SSISDB].[catalog].[environment_references]
-    WHERE folder_name = @folder_name
-      AND project_name = @project_name
-      AND environment_name = @environment_name;
+    SELECT @reference_id = er.reference_id 
+    FROM [SSISDB].[catalog].[environment_references] er
+    INNER JOIN [SSISDB].[catalog].[projects] p
+    ON er.project_id = p.project_id
+    INNER JOIN [SSISDB].[catalog].[folders] f
+    ON p.folder_id = f.folder_id
+    WHERE f.name = @folder_name
+      AND p.name = @project_name
+      AND er.environment_name = @environment_name;
 
     -- Set the environment reference for the execution
     EXEC [SSISDB].[catalog].[set_execution_parameter_value]
