@@ -1,70 +1,47 @@
-using System;
-using System.IO;
-using Microsoft.SqlServer.Dts.Runtime;
-using System.Text.RegularExpressions;
-using System.Collections.Generic;
+DECLARE @execution_id BIGINT;
+DECLARE @folder_name NVARCHAR(128) = 'YourFolderName';
+DECLARE @project_name NVARCHAR(128) = 'YourProjectName';
+DECLARE @package_name NVARCHAR(260) = 'YourPackageName.dtsx';
+DECLARE @environment_name NVARCHAR(128) = 'YourEnvironmentName'; -- Optional
 
-public void Main()
-{
-    // Define the file paths
-    string inputFilePath = @"C:\path\to\your\inputfile.csv";
-    string outputFilePath = @"C:\path\to\your\outputfile.csv";
+-- 1. Create an execution instance
+EXEC [SSISDB].[catalog].[create_execution] 
+    @folder_name = @folder_name,
+    @project_name = @project_name,
+    @package_name = @package_name,
+    @use32bitruntime = False,         -- Use 64-bit runtime by default
+    @execution_id = @execution_id OUTPUT;
 
-    // Define the column name mappings (existing name => new name)
-    Dictionary<string, string> columnMappings = new Dictionary<string, string>
-    {
-        { "OldColumnName1", "NewColumnName1" },
-        { "OldColumnName2", "NewColumnName2" },
-        { "OldColumnName3", "NewColumnName3" }
-        // Add more mappings as needed
-    };
+-- 2. Optionally set the environment reference if used
+IF @environment_name IS NOT NULL
+BEGIN
+    DECLARE @reference_id BIGINT;
+    
+    -- Get the environment reference ID
+    SELECT @reference_id = reference_id 
+    FROM [SSISDB].[catalog].[environment_references]
+    WHERE folder_name = @folder_name
+      AND project_name = @project_name
+      AND environment_name = @environment_name;
 
-    // Read all lines from the input file
-    string[] lines = File.ReadAllLines(inputFilePath);
+    -- Set the environment reference for the execution
+    EXEC [SSISDB].[catalog].[set_execution_parameter_value]
+        @execution_id = @execution_id,
+        @object_type = 50, -- 50 = Package
+        @parameter_name = N'ENVIRONMENT_REFERENCE',
+        @parameter_value = @reference_id;
+END
 
-    // Open the output file to write
-    using (StreamWriter writer = new StreamWriter(outputFilePath))
-    {
-        bool isHeader = true;
+-- 3. Set package parameters if needed (optional)
+-- Example for setting a parameter:
+-- EXEC [SSISDB].[catalog].[set_execution_parameter_value]
+--     @execution_id = @execution_id,
+--     @object_type = 50, -- 50 = Package
+--     @parameter_name = N'ParameterName',
+--     @parameter_value = 'ParameterValue';
 
-        // Process each line
-        foreach (string line in lines)
-        {
-            // Handle commas within quotes (preserve commas within quoted fields)
-            string[] fields = Regex.Split(line, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
+-- 4. Start the package execution
+EXEC [SSISDB].[catalog].[start_execution] @execution_id;
 
-            if (isHeader)
-            {
-                // Rename columns in the header line
-                for (int i = 0; i < fields.Length; i++)
-                {
-                    if (columnMappings.ContainsKey(fields[i]))
-                    {
-                        fields[i] = columnMappings[fields[i]];
-                    }
-                }
-                isHeader = false; // After processing header line, switch flag
-            }
-            else
-            {
-                // Assuming the date is in the first column (adjust the index as needed)
-                string dateValue = fields[0];
-
-                // Parse and reformat the date (adjust the date format as needed)
-                if (DateTime.TryParse(dateValue, out DateTime date))
-                {
-                    fields[0] = date.ToString("MM/dd/yyyy");
-                }
-            }
-
-            // Join the fields back into a single line
-            string newLine = string.Join(",", fields);
-
-            // Write the line to the output file
-            writer.WriteLine(newLine);
-        }
-    }
-
-    // Mark the Script Task as successful
-    Dts.TaskResult = (int)ScriptResults.Success;
-}
+-- Output the execution ID
+PRINT 'Package execution started. Execution ID: ' + CAST(@execution_id AS NVARCHAR(20));
