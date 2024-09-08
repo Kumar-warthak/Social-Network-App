@@ -50,7 +50,7 @@ EXEC [SSISDB].[catalog].[start_execution] @execution_id;
 -- Output the execution ID
 PRINT 'Package execution started. Execution ID: ' + CAST(@execution_id AS NVARCHAR(20));
 
-and(
-    equals(substring(triggerOutputs()?['body/{FilenameWithExtension}'], 0, 14), concat('report_', formatDateTime(addDays(utcNow(), -mod(add(int(formatDateTime(utcNow(), 'd')), 1), 7)), 'yyyy-MM-dd'))),
-    endsWith(triggerOutputs()?['body/{FilenameWithExtension}'], '.csv')
+@and(
+    equals(substring(triggerOutputs()?['body/{FilenameWithExtension}'], 0, 21), concat('report_', formatDateTime(addDays(utcNow(), -mod(add(int(formatDateTime(utcNow(), 'd')), 1), 7)), 'yyyy-MM-dd'))),
+    endsWith(toLower(triggerOutputs()?['body/{FilenameWithExtension}']), '.csv')
 )
