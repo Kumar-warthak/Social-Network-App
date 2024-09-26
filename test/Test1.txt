@@ -1,3 +1,19 @@
-(DT_WSTR, 4) YEAR(DATEADD("day", -1 * ((DATEPART("dw", GETDATE()) + 1) % 7 + 8), GETDATE())) + "-" +
-RIGHT("0" + (DT_WSTR, 2) MONTH(DATEADD("day", -1 * ((DATEPART("dw", GETDATE()) + 1) % 7 + 8), GETDATE())), 2) + "-" +
-RIGHT("0" + (DT_WSTR, 2) DAY(DATEADD("day", -1 * ((DATEPART("dw", GETDATE()) + 1) % 7 + 8), GETDATE())), 2)
+Sub getlabel()
+
+Dim myLabelInfo As Office.LabelInfo
+Dim labelpart1 As String
+Dim labelpart2 As String
+
+Set wb = ThisWorkbook
+
+Set myLabelInfo = wb.SensitivityLabel.getlabel()
+
+labelpart1 = myLabelInfo.LabelId
+labelpart2 = myLabelInfo.SiteId
+
+Sheets("Sheet1").Activate
+
+Range("A1").Value = labelpart1
+Range("A2").Value = labelpart2
+
+End Sub
