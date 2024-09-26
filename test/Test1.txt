@@ -17,3 +17,28 @@ Range("A1").Value = labelpart1
 Range("A2").Value = labelpart2
 
 End Sub
+
+
+Sub setlabel()
+
+Dim docSenseLabel As SensitivityLabel
+Dim labelInfo As Office.labelInfo
+Dim wb As Workbook
+
+Set wb = Workbooks.Add 
+Set docSenseLabel = wb.SensitivityLabel
+
+Set labelInfo = docSenseLabel.CreateLabelInfo()
+With labelInfo
+    .AssignmentMethod = MsoAssignmentMethod.PRIVILEGED
+    .LabelId = "the labelId you got"
+    .LabelName = "Important or whatever label you saved earlier"
+    .SiteId = "the site Id you got"
+End With
+
+docSenseLabel.setlabel labelInfo, labelInfo
+
+wb.SaveAs Filename:="C:\Users\filename", FileFormat:=51
+wb.Close
+
+End Sub
