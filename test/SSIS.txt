@@ -1,84 +1,87 @@
 using System;
-using System.Data;
-using System.Data.OleDb;
-using System.Globalization;
 using System.IO;
-using System.Text.RegularExpressions;
+using System.Text;
 
 public void Main()
 {
-    // Define file paths and connection string
-    string tempFilePath = Dts.Variables["User::TempFilePath"].Value.ToString();
-    string outputCsvFilePath = Dts.Variables["User::OutputCsvFilePath"].Value.ToString();
-    string connectionString = Dts.Variables["User::ConnectionString"].Value.ToString();
+    // Specify the path of your CSV file
+    string csvFilePath = Dts.Variables["User::CsvFilePath"].Value.ToString();
+    
+    // Read all lines from the CSV file
+    string[] lines = File.ReadAllLines(csvFilePath);
 
-    using (OleDbConnection conn = new OleDbConnection(connectionString))
+    // Create a StringBuilder to store the new CSV content with split columns
+    StringBuilder newCsvContent = new StringBuilder();
+
+    // Set the index of the column that needs to be split
+    int targetColumnIndex = 2; // For example, if the third column needs to be split
+    
+    // Variable to store the maximum number of new columns based on the data
+    int maxSplitColumns = 0;
+
+    // Process the CSV file line by line
+    for (int i = 0; i < lines.Length; i++)
     {
-        conn.Open();
+        string line = lines[i];
+        
+        // Split the line by commas to get the individual columns
+        string[] columns = line.Split(',');
 
-        // Set the NLS_DATE_FORMAT for the session
-        using (OleDbCommand setDateFormatCmd = new OleDbCommand("ALTER SESSION SET NLS_DATE_FORMAT = 'MM/DD/YYYY'", conn))
+        if (i == 0)
         {
-            setDateFormatCmd.ExecuteNonQuery();
+            // For the header row, keep the original headers
+            newCsvContent.Append(string.Join(",", columns));
+
+            // Calculate the maximum number of new columns dynamically in the next loop
         }
-
-        // Prepare SQL insert command template
-        string sqlInsertTemplate = "INSERT INTO YourTableName (NewDateColumn, Column2, Column3, Column4, Column5, " +
-                                   "Column6, Column7, Column8, Column9, Column10, Column11, Column12, Column13, " +
-                                   "Column14, Column15, Column16, Column17, Column18, Column19, Column20) VALUES ({0})";
-
-        // Open the output CSV file for writing
-        using (StreamWriter writer = new StreamWriter(outputCsvFilePath, false)) // false to overwrite the file if it exists
+        else
         {
-            // Read the CSV file line by line
-            using (StreamReader sr = new StreamReader(tempFilePath))
+            // Split the target column (e.g., the third column) by semicolon
+            string[] splitValues = columns[targetColumnIndex].Split(';'); // Adjust based on actual delimiter
+
+            // Update maxSplitColumns based on the number of split values in the current row
+            maxSplitColumns = Math.Max(maxSplitColumns, splitValues.Length);
+
+            // Add the original columns
+            newCsvContent.Append(string.Join(",", columns[0], columns[1]));
+
+            // Dynamically append the split values (add empty strings for missing values)
+            for (int j = 0; j < splitValues.Length; j++)
             {
-                string headerLine = sr.ReadLine(); // Skip header line
+                newCsvContent.Append("," + splitValues[j].Trim());
+            }
 
-                string line;
-                while ((line = sr.ReadLine()) != null)
-                {
-                    // Split line using regex to handle commas inside quotes
-                    var columns = Regex.Split(line, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
-
-                    // Remove quotes and trim all columns
-                    for (int i = 0; i < columns.Length; i++)
-                    {
-                        columns[i] = columns[i].Trim().Trim('"');
-                    }
-
-                    // Parse and format the date column with leading zeros
-                    DateTime dateValue;
-                    if (DateTime.TryParseExact(columns[0], "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out dateValue))
-                    {
-                        columns[0] = dateValue.ToString("MM/dd/yyyy"); // Ensures leading zeros
-                    }
-                    else
-                    {
-                        throw new Exception("Date format is invalid: " + columns[0]);
-                    }
-
-                    // Escape single quotes in columns to avoid SQL syntax errors
-                    for (int i = 0; i < columns.Length; i++)
-                    {
-                        columns[i] = columns[i].Replace("'", "''");
-                    }
-
-                    // Construct the SQL insert statement with actual values
-                    string sqlInsert = string.Format(sqlInsertTemplate, string.Join(", ", columns.Select(col => $"'{col}'")));
-
-                    // Write the SQL insert statement to the output CSV file
-                    writer.WriteLine(sqlInsert);
-
-                    // Execute the SQL insert statement
-                    using (OleDbCommand cmd = new OleDbCommand(sqlInsert, conn))
-                    {
-                        cmd.ExecuteNonQuery();
-                    }
-                }
+            // Fill with empty columns if splitValues has fewer elements than maxSplitColumns
+            for (int j = splitValues.Length; j < maxSplitColumns; j++)
+            {
+                newCsvContent.Append(",");
             }
         }
+
+        // Add a newline at the end of the row
+        newCsvContent.AppendLine();
     }
 
+    // Now go back and generate the header row with the correct number of new columns
+    // Insert new dynamic column headers into the first row
+    string[] originalHeaderColumns = lines[0].Split(',');
+
+    // Generate new headers for the split columns
+    newCsvContent.Insert(0, string.Join(",", originalHeaderColumns[0], originalHeaderColumns[1]));
+
+    for (int j = 1; j <= maxSplitColumns; j++)
+    {
+        newCsvContent.Insert(newCsvContent.Length - newCsvContent.ToString().Length, ",NewColumn" + j);
+    }
+    newCsvContent.AppendLine();
+
+    // Write the new content to a new CSV file (or overwrite the existing one)
+    string newCsvFilePath = Path.Combine(Path.GetDirectoryName(csvFilePath), "Processed_" + Path.GetFileName(csvFilePath));
+    File.WriteAllText(newCsvFilePath, newCsvContent.ToString());
+
+    // Optionally, output the path of the new file to SSIS
+    Dts.Variables["User::NewCsvFilePath"].Value = newCsvFilePath;
+
+    // Indicate success
     Dts.TaskResult = (int)ScriptResults.Success;
 }
