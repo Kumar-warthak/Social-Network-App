@@ -8,15 +8,15 @@ DECLARE @MaxParts INT;
 SELECT @MaxParts = MAX(LEN(full_name) - LEN(REPLACE(full_name, @Delimiter, '')) + 1)
 FROM your_table;
 
--- Step 2: Generate dynamic SQL to split and pivot the results
+-- Step 2: Generate dynamic SQL to split and pivot the results and place them in a CTE
 SET @SQL = 'WITH SplitValues AS (
     SELECT ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY (SELECT NULL)) AS part_number, 
            s.value AS part_value,
            t.id
     FROM ' + @TableName + ' t
     CROSS APPLY STRING_SPLIT(t.' + @ColumnName + ', ''' + @Delimiter + ''') s
-)
-SELECT id';
+), FinalTable AS (
+    SELECT id';
 
 -- Step 3: Dynamically add columns for each part
 DECLARE @i INT = 1;
@@ -26,7 +26,10 @@ BEGIN
     SET @i = @i + 1;
 END
 
-SET @SQL = @SQL + ' FROM SplitValues GROUP BY id';
+SET @SQL = @SQL + ' FROM SplitValues GROUP BY id
+)
+-- Step 4: Use the CTE to select or further manipulate data
+SELECT * FROM FinalTable;';
 
--- Step 4: Execute the dynamic SQL
+-- Step 5: Execute the dynamic SQL
 EXEC sp_executesql @SQL;
