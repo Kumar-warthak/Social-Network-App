@@ -1,44 +1,32 @@
-Sub getlabel()
+DECLARE @Delimiter NVARCHAR(1) = '|';  -- The delimiter used in your string
+DECLARE @TableName NVARCHAR(128) = 'your_table';  -- Your table name
+DECLARE @ColumnName NVARCHAR(128) = 'full_name';  -- The column you want to split
+DECLARE @SQL NVARCHAR(MAX);
+DECLARE @MaxParts INT;
 
-Dim myLabelInfo As Office.LabelInfo
-Dim labelpart1 As String
-Dim labelpart2 As String
+-- Step 1: Find the maximum number of parts in the string
+SELECT @MaxParts = MAX(LEN(full_name) - LEN(REPLACE(full_name, @Delimiter, '')) + 1)
+FROM your_table;
 
-Set wb = ThisWorkbook
+-- Step 2: Generate dynamic SQL to split and pivot the results
+SET @SQL = 'WITH SplitValues AS (
+    SELECT ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY (SELECT NULL)) AS part_number, 
+           s.value AS part_value,
+           t.id
+    FROM ' + @TableName + ' t
+    CROSS APPLY STRING_SPLIT(t.' + @ColumnName + ', ''' + @Delimiter + ''') s
+)
+SELECT id';
 
-Set myLabelInfo = wb.SensitivityLabel.getlabel()
+-- Step 3: Dynamically add columns for each part
+DECLARE @i INT = 1;
+WHILE @i <= @MaxParts
+BEGIN
+    SET @SQL = @SQL + ', MAX(CASE WHEN part_number = ' + CAST(@i AS NVARCHAR) + ' THEN part_value END) AS part' + CAST(@i AS NVARCHAR);
+    SET @i = @i + 1;
+END
 
-labelpart1 = myLabelInfo.LabelId
-labelpart2 = myLabelInfo.SiteId
+SET @SQL = @SQL + ' FROM SplitValues GROUP BY id';
 
-Sheets("Sheet1").Activate
-
-Range("A1").Value = labelpart1
-Range("A2").Value = labelpart2
-
-End Sub
-
-
-Sub setlabel()
-
-Dim docSenseLabel As SensitivityLabel
-Dim labelInfo As Office.labelInfo
-Dim wb As Workbook
-
-Set wb = Workbooks.Add 
-Set docSenseLabel = wb.SensitivityLabel
-
-Set labelInfo = docSenseLabel.CreateLabelInfo()
-With labelInfo
-    .AssignmentMethod = MsoAssignmentMethod.PRIVILEGED
-    .LabelId = "the labelId you got"
-    .LabelName = "Important or whatever label you saved earlier"
-    .SiteId = "the site Id you got"
-End With
-
-docSenseLabel.setlabel labelInfo, labelInfo
-
-wb.SaveAs Filename:="C:\Users\filename", FileFormat:=51
-wb.Close
-
-End Sub
+-- Step 4: Execute the dynamic SQL
+EXEC sp_executesql @SQL;
