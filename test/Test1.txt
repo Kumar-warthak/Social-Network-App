@@ -15,7 +15,7 @@ SET @SQL = 'WITH SplitValues AS (
     SELECT ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY (SELECT NULL)) AS part_number, 
            s.value AS part_value,
            t.id,
-           CASE WHEN r.' + @ReferenceColumn + ' IS NOT NULL THEN 1 ELSE 0 END AS match_found
+           CASE WHEN r.' + @ReferenceColumn + ' IS NOT NULL THEN ''Match'' ELSE ''NoMatch'' END AS match_found
     FROM ' + @TableName + ' t
     CROSS APPLY STRING_SPLIT(t.' + @ColumnName + ', ''' + @Delimiter + ''') s
     LEFT JOIN ' + @ReferenceTable + ' r ON s.value = r.' + @ReferenceColumn + '
@@ -35,10 +35,25 @@ BEGIN
     SET @i = @i + 1;
 END
 
+SET @SQL = @SQL + ', 
+    CASE 
+        WHEN ';
+
+-- Step 4: Add logic to check if any match columns have "Match"
+SET @i = 1;
+WHILE @i <= @MaxParts
+BEGIN
+    SET @SQL = @SQL + ' MAX(CASE WHEN part_number = ' + CAST(@i AS NVARCHAR) + ' THEN match_found END) = ''Match'' OR';
+    SET @i = @i + 1;
+END
+
+-- Remove the last 'OR' and finalize the CASE statement
+SET @SQL = LEFT(@SQL, LEN(@SQL) - 2) + ' THEN ''Match'' ELSE ''NoMatch'' END AS overall_match';
+
 SET @SQL = @SQL + ' FROM SplitValues GROUP BY id
 )
--- Step 4: Use the CTE to select or further manipulate data
+-- Step 5: Use the CTE to select or further manipulate data
 SELECT * FROM FinalTable;';
 
--- Step 5: Execute the dynamic SQL
+-- Step 6: Execute the dynamic SQL
 EXEC sp_executesql @SQL;
