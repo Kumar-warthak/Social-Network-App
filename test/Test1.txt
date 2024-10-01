@@ -22,21 +22,21 @@ SET @SQL = 'WITH SplitValues AS (
 ), FinalTable AS (
     SELECT id';
 
--- Step 3: Dynamically add columns for each part
+-- Step 3: Dynamically add columns for each part, using COALESCE to replace NULL with ''
 DECLARE @i INT = 1;
 WHILE @i <= @MaxParts
 BEGIN
-    -- Add the part columns
-    SET @SQL = @SQL + ', MAX(CASE WHEN part_number = ' + CAST(@i AS NVARCHAR) + ' THEN part_value END) AS part' + CAST(@i AS NVARCHAR);
+    -- Add the part columns with COALESCE to replace NULL with ''
+    SET @SQL = @SQL + ', COALESCE(MAX(CASE WHEN part_number = ' + CAST(@i AS NVARCHAR) + ' THEN part_value END), '''') AS part' + CAST(@i AS NVARCHAR);
     SET @i = @i + 1;
 END
 
--- Step 4: Now add match columns after part columns
+-- Step 4: Add match columns after part columns, using COALESCE to replace NULL with ''
 SET @i = 1;
 WHILE @i <= @MaxParts
 BEGIN
-    -- Add the match columns
-    SET @SQL = @SQL + ', MAX(CASE WHEN part_number = ' + CAST(@i AS NVARCHAR) + ' THEN match_found END) AS part' + CAST(@i AS NVARCHAR) + '_match';
+    -- Add the match columns with COALESCE to replace NULL with ''
+    SET @SQL = @SQL + ', COALESCE(MAX(CASE WHEN part_number = ' + CAST(@i AS NVARCHAR) + ' THEN match_found END), '''') AS part' + CAST(@i AS NVARCHAR) + '_match';
     SET @i = @i + 1;
 END
 
@@ -58,8 +58,8 @@ SET @SQL = LEFT(@SQL, LEN(@SQL) - 2) + ' THEN ''Match'' ELSE ''NoMatch'' END AS 
 -- Step 6: Finalize the SQL for the SELECT statement
 SET @SQL = @SQL + ' FROM SplitValues GROUP BY id
 )
--- Step 7: Use the CTE to select with the specified column order
-SELECT id, ';
+-- Step 7: Use the CTE to select with the specified column order (without id)
+SELECT ';
 
 -- Step 8: Add part columns followed by match columns, then overall match
 SET @i = 1;
