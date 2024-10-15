@@ -1,13 +1,17 @@
 async function main(workbook: ExcelScript.Workbook, csvData: string, sheetName: string) {
     // Split CSV data into rows
-    const rows = csvData.split('\n').map(row => row.split(','));
+    const rows = csvData.split('\n')
+        .map(row => row.split(','))
+        .filter(row => row.length > 1); // Filter out any empty rows
 
     // Create a new worksheet
     const newSheet = workbook.addWorksheet(sheetName);
 
-    // Determine the maximum number of columns
-    const maxColumns = Math.max(...rows.map(row => row.length));
-
-    // Write data to the new worksheet
-    newSheet.getRange("A1").getResizedRange(rows.length - 1, maxColumns - 1).setValues(rows);
+    // Check if rows have content
+    if (rows.length > 0) {
+        // Write data to the new worksheet
+        newSheet.getRange("A1").getResizedRange(rows.length - 1, rows[0].length - 1).setValues(rows);
+    } else {
+        console.log(`No data found in the CSV for ${sheetName}.`);
+    }
 }
