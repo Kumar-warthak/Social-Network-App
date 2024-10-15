@@ -1,84 +1,13 @@
-DECLARE @Delimiter NVARCHAR(1) = '|';  -- The delimiter used in your string
-DECLARE @TableName NVARCHAR(128) = 'your_table';  -- Your table name
-DECLARE @ColumnName NVARCHAR(128) = 'full_name';  -- The column you want to split
-DECLARE @ReferenceTable NVARCHAR(128) = 'reference_table';  -- The reference table to check matches
-DECLARE @ReferenceColumn NVARCHAR(128) = 'reference_column';  -- The reference column to match with parts
-DECLARE @SQL NVARCHAR(MAX);
-DECLARE @MaxParts INT;
+async function main(workbook: ExcelScript.Workbook, csvData: string, sheetName: string) {
+    // Split CSV data into rows
+    const rows = csvData.split('\n').map(row => row.split(','));
 
--- Step 1: Find the maximum number of parts in the string
-SELECT @MaxParts = MAX(LEN(full_name) - LEN(REPLACE(full_name, @Delimiter, '')) + 1)
-FROM your_table;
+    // Create a new worksheet
+    const newSheet = workbook.addWorksheet(sheetName);
 
--- Step 2: Generate dynamic SQL to split and pivot the results and place them in a CTE
-SET @SQL = 'WITH SplitValues AS (
-    SELECT ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY (SELECT NULL)) AS part_number, 
-           s.value AS part_value,
-           t.id,
-           CASE WHEN r.' + @ReferenceColumn + ' IS NOT NULL THEN ''Match'' ELSE ''NoMatch'' END AS match_found
-    FROM ' + @TableName + ' t
-    CROSS APPLY STRING_SPLIT(t.' + @ColumnName + ', ''' + @Delimiter + ''') s
-    LEFT JOIN ' + @ReferenceTable + ' r ON s.value = r.' + @ReferenceColumn + '
-), FinalTable AS (
-    SELECT id';
+    // Determine the maximum number of columns
+    const maxColumns = Math.max(...rows.map(row => row.length));
 
--- Step 3: Dynamically add columns for each part, using COALESCE to replace NULL with ''
-DECLARE @i INT = 1;
-WHILE @i <= @MaxParts
-BEGIN
-    -- Add the part columns with COALESCE to replace NULL with ''
-    SET @SQL = @SQL + ', COALESCE(MAX(CASE WHEN part_number = ' + CAST(@i AS NVARCHAR) + ' THEN part_value END), '''') AS part' + CAST(@i AS NVARCHAR);
-    SET @i = @i + 1;
-END
-
--- Step 4: Add match columns after part columns, using COALESCE to replace NULL with ''
-SET @i = 1;
-WHILE @i <= @MaxParts
-BEGIN
-    -- Add the match columns with COALESCE to replace NULL with ''
-    SET @SQL = @SQL + ', COALESCE(MAX(CASE WHEN part_number = ' + CAST(@i AS NVARCHAR) + ' THEN match_found END), '''') AS part' + CAST(@i AS NVARCHAR) + '_match';
-    SET @i = @i + 1;
-END
-
--- Step 5: Add logic to check if any match columns have "Match"
-SET @SQL = @SQL + ', 
-    CASE 
-        WHEN ';
-
-SET @i = 1;
-WHILE @i <= @MaxParts
-BEGIN
-    SET @SQL = @SQL + ' MAX(CASE WHEN part_number = ' + CAST(@i AS NVARCHAR) + ' THEN match_found END) = ''Match'' OR';
-    SET @i = @i + 1;
-END
-
--- Remove the last 'OR' and finalize the CASE statement
-SET @SQL = LEFT(@SQL, LEN(@SQL) - 2) + ' THEN ''Match'' ELSE ''NoMatch'' END AS overall_match';
-
--- Step 6: Finalize the SQL for the SELECT statement
-SET @SQL = @SQL + ' FROM SplitValues GROUP BY id
-)
--- Step 7: Use the CTE to select with the specified column order (without id)
-SELECT ';
-
--- Step 8: Add part columns followed by match columns, then overall match
-SET @i = 1;
-WHILE @i <= @MaxParts
-BEGIN
-    SET @SQL = @SQL + 'part' + CAST(@i AS NVARCHAR) + ', ';
-    SET @i = @i + 1;
-END
-
--- Add match columns
-SET @i = 1;
-WHILE @i <= @MaxParts
-BEGIN
-    SET @SQL = @SQL + 'part' + CAST(@i AS NVARCHAR) + '_match, ';
-    SET @i = @i + 1;
-END
-
--- Remove the last comma and add overall match
-SET @SQL = LEFT(@SQL, LEN(@SQL) - 2) + ', overall_match FROM FinalTable;';
-
--- Step 9: Execute the dynamic SQL
-EXEC sp_executesql @SQL;
+    // Write data to the new worksheet
+    newSheet.getRange("A1").getResizedRange(rows.length - 1, maxColumns - 1).setValues(rows);
+}
