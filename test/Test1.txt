@@ -11,26 +11,48 @@ public void Main()
     string inputFilePath = Dts.Variables["User::InputFilePath"].Value.ToString();
     string outputFilePath = Dts.Variables["User::OutputFilePath"].Value.ToString();
 
-    // Define the pattern for column names like "push1", "push2", etc.
-    string pattern = @"^push\d+$";
+    // Define the pattern for column names exactly like "PushCode" followed by a number (case-insensitive)
+    string pattern = @"^PushCode\d+$";
+    Regex regex = new Regex(pattern, RegexOptions.IgnoreCase);
 
     // Read the CSV file into a DataTable
     DataTable dataTable = ReadCsvToDataTable(inputFilePath);
 
-    // Get the columns to delete based on the pattern
+    // Print all column names for debugging
+    Console.WriteLine("Column names before deletion:");
+    foreach (DataColumn col in dataTable.Columns)
+    {
+        Console.WriteLine(col.ColumnName);
+    }
+
+    // Identify columns to delete
     var columnsToDelete = dataTable.Columns
                                     .Cast<DataColumn>()
-                                    .Where(col => Regex.IsMatch(col.ColumnName, pattern))
+                                    .Where(col => regex.IsMatch(col.ColumnName.Trim()))
                                     .ToList();
+
+    // If no columns matched, log a message
+    if (columnsToDelete.Count == 0)
+    {
+        Console.WriteLine("No columns matched the pattern.");
+    }
 
     // Remove matching columns from the DataTable
     foreach (var col in columnsToDelete)
     {
         dataTable.Columns.Remove(col);
+        Console.WriteLine($"Deleted column: {col.ColumnName}");
     }
 
     // Write the modified DataTable to a new CSV file
     WriteDataTableToCsv(dataTable, outputFilePath);
+
+    // Print remaining columns after deletion
+    Console.WriteLine("Column names after deletion:");
+    foreach (DataColumn col in dataTable.Columns)
+    {
+        Console.WriteLine(col.ColumnName);
+    }
 
     Dts.TaskResult = (int)ScriptResults.Success;
 }
