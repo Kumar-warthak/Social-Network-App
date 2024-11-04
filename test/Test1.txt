@@ -1,17 +1,41 @@
-async function main(workbook: ExcelScript.Workbook, csvData: string, sheetName: string) {
-    // Split CSV data into rows
-    const rows = csvData.split('\n')
-        .map(row => row.split(','))
-        .filter(row => row.length > 1); // Filter out any empty rows
+using System;
+using System.Text.RegularExpressions;
+using Microsoft.SqlServer.Dts.Pipeline.Wrapper;
+using Microsoft.SqlServer.Dts.Runtime.Wrapper;
 
-    // Create a new worksheet
-    const newSheet = workbook.addWorksheet(sheetName);
+public class ScriptMain : UserComponent
+{
+    public override void PreExecute()
+    {
+        base.PreExecute();
 
-    // Check if rows have content
-    if (rows.length > 0) {
-        // Write data to the new worksheet
-        newSheet.getRange("A1").getResizedRange(rows.length - 1, rows[0].length - 1).setValues(rows);
-    } else {
-        console.log(`No data found in the CSV for ${sheetName}.`);
+        // Pattern to match columns that start with "push" and end with a number
+        string pattern = @"^push\d+$";
+        
+        // List to hold columns to delete
+        var columnsToDelete = new List<int>();
+
+        // Loop through all input columns
+        for (int i = 0; i < this.ComponentMetaData.InputCollection[0].InputColumnCollection.Count; i++)
+        {
+            IDTSInputColumn100 column = this.ComponentMetaData.InputCollection[0].InputColumnCollection[i];
+
+            // Check if column name matches the pattern
+            if (Regex.IsMatch(column.Name, pattern))
+            {
+                columnsToDelete.Add(i);
+            }
+        }
+
+        // Delete the matched columns
+        foreach (var colIndex in columnsToDelete.OrderByDescending(x => x))
+        {
+            this.ComponentMetaData.InputCollection[0].InputColumnCollection.RemoveObjectByIndex(colIndex);
+        }
+    }
+
+    public override void Input0_ProcessInputRow(Input0Buffer Row)
+    {
+        // Add custom processing logic here if necessary
     }
 }
