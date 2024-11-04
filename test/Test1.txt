@@ -1,41 +1,82 @@
 using System;
+using System.Data;
+using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
-using Microsoft.SqlServer.Dts.Pipeline.Wrapper;
-using Microsoft.SqlServer.Dts.Runtime.Wrapper;
+using Microsoft.SqlServer.Dts.Runtime;
 
-public class ScriptMain : UserComponent
+public void Main()
 {
-    public override void PreExecute()
+    // Get file paths from SSIS variables
+    string inputFilePath = Dts.Variables["User::InputFilePath"].Value.ToString();
+    string outputFilePath = Dts.Variables["User::OutputFilePath"].Value.ToString();
+
+    // Define the pattern for column names like "push1", "push2", etc.
+    string pattern = @"^push\d+$";
+
+    // Read the CSV file into a DataTable
+    DataTable dataTable = ReadCsvToDataTable(inputFilePath);
+
+    // Get the columns to delete based on the pattern
+    var columnsToDelete = dataTable.Columns
+                                    .Cast<DataColumn>()
+                                    .Where(col => Regex.IsMatch(col.ColumnName, pattern))
+                                    .ToList();
+
+    // Remove matching columns from the DataTable
+    foreach (var col in columnsToDelete)
     {
-        base.PreExecute();
+        dataTable.Columns.Remove(col);
+    }
 
-        // Pattern to match columns that start with "push" and end with a number
-        string pattern = @"^push\d+$";
-        
-        // List to hold columns to delete
-        var columnsToDelete = new List<int>();
+    // Write the modified DataTable to a new CSV file
+    WriteDataTableToCsv(dataTable, outputFilePath);
 
-        // Loop through all input columns
-        for (int i = 0; i < this.ComponentMetaData.InputCollection[0].InputColumnCollection.Count; i++)
+    Dts.TaskResult = (int)ScriptResults.Success;
+}
+
+// Helper method to read CSV into a DataTable
+private DataTable ReadCsvToDataTable(string filePath)
+{
+    DataTable dataTable = new DataTable();
+
+    using (StreamReader sr = new StreamReader(filePath))
+    {
+        string[] headers = sr.ReadLine().Split(',');
+        foreach (string header in headers)
         {
-            IDTSInputColumn100 column = this.ComponentMetaData.InputCollection[0].InputColumnCollection[i];
-
-            // Check if column name matches the pattern
-            if (Regex.IsMatch(column.Name, pattern))
-            {
-                columnsToDelete.Add(i);
-            }
+            dataTable.Columns.Add(header);
         }
 
-        // Delete the matched columns
-        foreach (var colIndex in columnsToDelete.OrderByDescending(x => x))
+        while (!sr.EndOfStream)
         {
-            this.ComponentMetaData.InputCollection[0].InputColumnCollection.RemoveObjectByIndex(colIndex);
+            string[] rows = sr.ReadLine().Split(',');
+            DataRow dr = dataTable.NewRow();
+            for (int i = 0; i < headers.Length; i++)
+            {
+                dr[i] = rows[i];
+            }
+            dataTable.Rows.Add(dr);
         }
     }
 
-    public override void Input0_ProcessInputRow(Input0Buffer Row)
+    return dataTable;
+}
+
+// Helper method to write DataTable to CSV
+private void WriteDataTableToCsv(DataTable dataTable, string filePath)
+{
+    using (StreamWriter sw = new StreamWriter(filePath))
     {
-        // Add custom processing logic here if necessary
+        // Write column headers
+        string[] columnNames = dataTable.Columns.Cast<DataColumn>().Select(col => col.ColumnName).ToArray();
+        sw.WriteLine(string.Join(",", columnNames));
+
+        // Write rows
+        foreach (DataRow row in dataTable.Rows)
+        {
+            string[] fields = row.ItemArray.Select(field => field.ToString()).ToArray();
+            sw.WriteLine(string.Join(",", fields));
+        }
     }
 }
