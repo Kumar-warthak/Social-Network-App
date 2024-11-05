@@ -16,9 +16,12 @@ function main(workbook: ExcelScript.Workbook): void {
         }
     }
 
+    // Get the total number of rows in the used range
+    let totalRows = sheet.getUsedRange().getRowCount();
+
     // Delete columns in reverse order to avoid shifting issues
     for (let i = columnsToDelete.length - 1; i >= 0; i--) {
         let columnToDelete = columnsToDelete[i];
-        sheet.getRangeByIndexes(0, columnToDelete - 1, sheet.getRowCount(), 1).delete(ExcelScript.DeleteShiftDirection.left);
+        sheet.getRangeByIndexes(0, columnToDelete - 1, totalRows, 1).delete(ExcelScript.DeleteShiftDirection.left);
     }
 }
