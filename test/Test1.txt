@@ -1,109 +1,20 @@
-using System;
-using System.Data;
-using System.IO;
-using System.Linq;
-using System.Text.RegularExpressions;
-using System.Windows.Forms;  // Add this to use MessageBox
-using Microsoft.SqlServer.Dts.Runtime;
+function main(workbook: ExcelScript.Workbook): void {
+    let sheet = workbook.getActiveWorksheet();
+    let headerRow = sheet.getRange("1:1").getValues()[0];  // Assumes headers are in the first row
 
-public void Main()
-{
-    // Get file paths from SSIS variables
-    string inputFilePath = Dts.Variables["User::InputFilePath"].Value.ToString();
-    string outputFilePath = Dts.Variables["User::OutputFilePath"].Value.ToString();
+    // Regular expression to match columns that start with "PushCode" and end with a number
+    let regex = /^PushCode\d+$/;
 
-    // Define a flexible pattern for column names like "PushCode" followed by any number
-    string pattern = @"^\s*PushCode\s*\d+\s*$";
-    Regex regex = new Regex(pattern, RegexOptions.IgnoreCase);
-
-    // Read the CSV file into a DataTable
-    DataTable dataTable = ReadCsvToDataTable(inputFilePath);
-
-    // Debugging: Display each column name with indicators to detect hidden characters
-    string columnNamesBefore = "Column names before deletion (showing hidden characters):\n";
-    foreach (DataColumn col in dataTable.Columns)
-    {
-        columnNamesBefore += $"|{col.ColumnName}|\n";
-    }
-    MessageBox.Show(columnNamesBefore, "Debug Info");
-
-    // Identify columns to delete
-    var columnsToDelete = dataTable.Columns
-                                    .Cast<DataColumn>()
-                                    .Where(col => regex.IsMatch(col.ColumnName))
-                                    .ToList();
-
-    // If no columns matched, display a message
-    if (columnsToDelete.Count == 0)
-    {
-        MessageBox.Show("No columns matched the pattern. Check for unexpected characters.", "Info");
-    }
-
-    // Remove matching columns from the DataTable and log each deletion
-    string deletedColumns = "Deleted columns:\n";
-    foreach (var col in columnsToDelete)
-    {
-        deletedColumns += $"{col.ColumnName}\n";
-        dataTable.Columns.Remove(col);
-    }
-    MessageBox.Show(deletedColumns, "Deleted Columns");
-
-    // Write the modified DataTable to a new CSV file
-    WriteDataTableToCsv(dataTable, outputFilePath);
-
-    // Display remaining column names after deletion
-    string columnNamesAfter = "Column names after deletion:\n";
-    foreach (DataColumn col in dataTable.Columns)
-    {
-        columnNamesAfter += $"{col.ColumnName}\n";
-    }
-    MessageBox.Show(columnNamesAfter, "Remaining Columns");
-
-    Dts.TaskResult = (int)ScriptResults.Success;
-}
-
-// Helper method to read CSV into a DataTable
-private DataTable ReadCsvToDataTable(string filePath)
-{
-    DataTable dataTable = new DataTable();
-
-    using (StreamReader sr = new StreamReader(filePath))
-    {
-        string[] headers = sr.ReadLine().Split(',');
-        foreach (string header in headers)
-        {
-            dataTable.Columns.Add(header);
-        }
-
-        while (!sr.EndOfStream)
-        {
-            string[] rows = sr.ReadLine().Split(',');
-            DataRow dr = dataTable.NewRow();
-            for (int i = 0; i < headers.Length; i++)
-            {
-                dr[i] = rows[i];
-            }
-            dataTable.Rows.Add(dr);
+    // Find all matching column indices
+    let columnsToDelete = [];
+    for (let i = 0; i < headerRow.length; i++) {
+        if (regex.test(headerRow[i])) {
+            columnsToDelete.push(i + 1);  // Store 1-based index for deletion
         }
     }
 
-    return dataTable;
-}
-
-// Helper method to write DataTable to CSV
-private void WriteDataTableToCsv(DataTable dataTable, string filePath)
-{
-    using (StreamWriter sw = new StreamWriter(filePath))
-    {
-        // Write column headers
-        string[] columnNames = dataTable.Columns.Cast<DataColumn>().Select(col => col.ColumnName).ToArray();
-        sw.WriteLine(string.Join(",", columnNames));
-
-        // Write rows
-        foreach (DataRow row in dataTable.Rows)
-        {
-            string[] fields = row.ItemArray.Select(field => field.ToString()).ToArray();
-            sw.WriteLine(string.Join(",", fields));
-        }
+    // Delete columns in reverse order to avoid shifting issues
+    for (let i = columnsToDelete.length - 1; i >= 0; i--) {
+        sheet.getRange(1, columnsToDelete[i], 1, 1).getEntireColumn().delete(ExcelScript.DeleteShiftDirection.left);
     }
 }
