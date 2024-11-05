@@ -18,6 +18,7 @@ function main(workbook: ExcelScript.Workbook): void {
 
     // Delete columns in reverse order to avoid shifting issues
     for (let i = columnsToDelete.length - 1; i >= 0; i--) {
-        sheet.getRange(1, columnsToDelete[i], 1, 1).getEntireColumn().delete(ExcelScript.DeleteShiftDirection.left);
+        let columnToDelete = columnsToDelete[i];
+        sheet.getRangeByIndexes(0, columnToDelete - 1, sheet.getRowCount(), 1).delete(ExcelScript.DeleteShiftDirection.left);
     }
 }
