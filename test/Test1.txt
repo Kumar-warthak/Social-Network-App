@@ -1,5 +1,11 @@
-function main(workbook: ExcelScript.Workbook): void {
-    let sheet = workbook.getActiveWorksheet();
+function main(workbook: ExcelScript.Workbook, sheetName: string): void {
+    // Get the specified worksheet by name
+    let sheet = workbook.getWorksheet(sheetName);
+    if (!sheet) {
+        console.log(`Sheet with name '${sheetName}' not found.`);
+        return;
+    }
+
     let headerRow = sheet.getRange("1:1").getValues()[0];  // Assumes headers are in the first row
 
     // Regular expression to match columns that start with "PushCode" and end with a number
