@@ -5,10 +5,13 @@ function main(workbook: ExcelScript.Workbook): void {
     // Regular expression to match columns that start with "PushCode" and end with a number
     let regex = /^PushCode\d+$/;
 
+    // Explicitly declare columnsToDelete as an array of numbers
+    let columnsToDelete: number[] = [];
+    
     // Find all matching column indices
-    let columnsToDelete = [];
     for (let i = 0; i < headerRow.length; i++) {
-        if (regex.test(headerRow[i])) {
+        let columnName = headerRow[i] as string;  // Cast headerRow[i] to string
+        if (regex.test(columnName)) {
             columnsToDelete.push(i + 1);  // Store 1-based index for deletion
         }
     }
