@@ -1,47 +1,34 @@
-function main(workbook: ExcelScript.Workbook, sheetName: string): void {
-    // Get the specified worksheet by name
-    let sheet = workbook.getWorksheet(sheetName);
-    if (!sheet) {
-        console.log(`Sheet with name '${sheetName}' not found.`);
-        return;
-    }
+from office365.sharepoint.client_context import ClientContext
+from office365.runtime.auth.authentication_context import AuthenticationContext
 
-    // Get the used range of the sheet
-    let usedRange = sheet.getUsedRange();
-    if (!usedRange) {
-        console.log(`No data found in sheet '${sheetName}'.`);
-        return;
-    }
+# Constants
+SITE_URL = "https://yourtenant.sharepoint.com/sites/yoursite"
+USERNAME = "your_email@yourtenant.onmicrosoft.com"
+PASSWORD = "your_password"
+LIST_NAME = "YourListName"
 
-    // Get the values in the first row (header row)
-    let headerRow = usedRange.getValues()[0];  // Get the first row from the used range
+# Authenticate
+def get_context(site_url, username, password):
+    context_auth = AuthenticationContext(site_url)
+    if context_auth.acquire_token_for_user(username, password):
+        return ClientContext(site_url, context_auth)
+    else:
+        raise Exception("Authentication failed: " + context_auth.get_last_error())
 
-    // Check if the headerRow is empty
-    if (headerRow.length === 0) {
-        console.log(`Header row is empty in sheet '${sheetName}'.`);
-        return;
-    }
+# Create a list item
+def create_list_item(context, list_name, item_data):
+    sp_list = context.web.lists.get_by_title(list_name)
+    item = sp_list.add_item(item_data).execute_query()
+    print(f"Item created successfully with ID: {item.properties['ID']}")
 
-    // Regular expression to match columns that start with "PushCode" and end with a number
-    let regex = /^PushCode\d+$/;
-
-    // Explicitly declare columnsToDelete as an array of numbers
-    let columnsToDelete: number[] = [];
-    
-    // Find all matching column indices
-    for (let i = 0; i < headerRow.length; i++) {  // Loop through the first row values
-        let columnName = headerRow[i] as string;  // Cast headerRow[i] to string
-        if (regex.test(columnName)) {
-            columnsToDelete.push(i + 1);  // Store 1-based index for deletion
+# Example Usage
+if __name__ == "__main__":
+    try:
+        ctx = get_context(SITE_URL, USERNAME, PASSWORD)
+        data = {
+            "Title": "New Item Title",  # Replace 'Title' with your column name
+            "CustomColumn": "Value"    # Add other fields as required
         }
-    }
-
-    // Get the total number of rows in the used range
-    let totalRows = usedRange.getRowCount();
-
-    // Delete columns in reverse order to avoid shifting issues
-    for (let i = columnsToDelete.length - 1; i >= 0; i--) {
-        let columnToDelete = columnsToDelete[i];
-        sheet.getRangeByIndexes(0, columnToDelete - 1, totalRows, 1).delete(ExcelScript.DeleteShiftDirection.left);
-    }
-}
+        create_list_item(ctx, LIST_NAME, data)
+    except Exception as e:
+        print("Error:", str(e))
