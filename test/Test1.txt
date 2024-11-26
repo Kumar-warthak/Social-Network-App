@@ -1,19 +1,17 @@
 from office365.sharepoint.client_context import ClientContext
-from office365.runtime.auth.authentication_context import AuthenticationContext
+from office365.runtime.auth.client_credential import ClientCredential
 
 # Constants
 SITE_URL = "https://yourtenant.sharepoint.com/sites/yoursite"
-USERNAME = "your_email@yourtenant.onmicrosoft.com"
-PASSWORD = "your_password"
+CLIENT_ID = "your-client-id"
+CLIENT_SECRET = "your-client-secret"
 LIST_NAME = "YourListName"
 
 # Authenticate
-def get_context(site_url, username, password):
-    context_auth = AuthenticationContext(site_url)
-    if context_auth.acquire_token_for_user(username, password):
-        return ClientContext(site_url, context_auth)
-    else:
-        raise Exception("Authentication failed: " + context_auth.get_last_error())
+def get_context(site_url, client_id, client_secret):
+    credentials = ClientCredential(client_id, client_secret)
+    ctx = ClientContext(site_url).with_credentials(credentials)
+    return ctx
 
 # Create a list item
 def create_list_item(context, list_name, item_data):
@@ -24,7 +22,7 @@ def create_list_item(context, list_name, item_data):
 # Example Usage
 if __name__ == "__main__":
     try:
-        ctx = get_context(SITE_URL, USERNAME, PASSWORD)
+        ctx = get_context(SITE_URL, CLIENT_ID, CLIENT_SECRET)
         data = {
             "Title": "New Item Title",  # Replace 'Title' with your column name
             "CustomColumn": "Value"    # Add other fields as required
