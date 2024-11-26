@@ -14,12 +14,22 @@ def get_context(site_url, client_id, client_secret):
     ctx = ClientContext(site_url).with_credentials(credentials)
     return ctx
 
-# Create list items from DataFrame
-def insert_dataframe_to_sharepoint(context, list_name, dataframe):
+# Insert only specified columns from DataFrame
+def insert_selected_columns_to_sharepoint(context, list_name, dataframe, column_mapping):
+    """
+    Insert only the specified columns from the DataFrame into the SharePoint list.
+
+    Args:
+    - context: Authenticated SharePoint client context
+    - list_name: Name of the SharePoint list
+    - dataframe: Pandas DataFrame with data
+    - column_mapping: Dict mapping DataFrame columns to SharePoint list columns
+                      Example: {"df_col_1": "SP_Col_1", "df_col_2": "SP_Col_2"}
+    """
     sp_list = context.web.lists.get_by_title(list_name)
     for _, row in dataframe.iterrows():
-        # Convert row to dictionary
-        item_data = row.to_dict()
+        # Map only the specified columns
+        item_data = {sp_col: row[df_col] for df_col, sp_col in column_mapping.items()}
         # Add SharePoint metadata
         item_data["__metadata"] = {"type": f"SP.Data.{list_name}ListItem"}
         sp_list.add_item(item_data).execute_query()
@@ -30,13 +40,20 @@ if __name__ == "__main__":
     try:
         # Example DataFrame
         data = {
-            "Title": ["Item 1", "Item 2", "Item 3"],  # Replace 'Title' with column names in SharePoint
-            "CustomColumn": ["Value1", "Value2", "Value3"],
+            "df_title": ["Task A", "Task B", "Task C"],       # DataFrame column
+            "df_description": ["Desc A", "Desc B", "Desc C"], # DataFrame column
+            "df_priority": ["High", "Medium", "Low"],         # DataFrame column
         }
         df = pd.DataFrame(data)
 
+        # Column mapping: DataFrame column -> SharePoint column
+        column_mapping = {
+            "df_title": "Title",           # Map 'df_title' to SharePoint 'Title'
+            "df_description": "Description", # Map 'df_description' to SharePoint 'Description'
+        }
+
         # Authenticate and insert data
         ctx = get_context(SITE_URL, CLIENT_ID, CLIENT_SECRET)
-        insert_dataframe_to_sharepoint(ctx, LIST_NAME, df)
+        insert_selected_columns_to_sharepoint(ctx, LIST_NAME, df, column_mapping)
     except Exception as e:
         print("Error:", str(e))
