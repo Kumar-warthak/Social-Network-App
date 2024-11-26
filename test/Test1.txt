@@ -1,3 +1,4 @@
+import pandas as pd
 from office365.sharepoint.client_context import ClientContext
 from office365.runtime.auth.client_credential import ClientCredential
 
@@ -13,20 +14,29 @@ def get_context(site_url, client_id, client_secret):
     ctx = ClientContext(site_url).with_credentials(credentials)
     return ctx
 
-# Create a list item
-def create_list_item(context, list_name, item_data):
+# Create list items from DataFrame
+def insert_dataframe_to_sharepoint(context, list_name, dataframe):
     sp_list = context.web.lists.get_by_title(list_name)
-    item = sp_list.add_item(item_data).execute_query()
-    print(f"Item created successfully with ID: {item.properties['ID']}")
+    for _, row in dataframe.iterrows():
+        # Convert row to dictionary
+        item_data = row.to_dict()
+        # Add SharePoint metadata
+        item_data["__metadata"] = {"type": f"SP.Data.{list_name}ListItem"}
+        sp_list.add_item(item_data).execute_query()
+        print(f"Inserted: {item_data}")
 
 # Example Usage
 if __name__ == "__main__":
     try:
-        ctx = get_context(SITE_URL, CLIENT_ID, CLIENT_SECRET)
+        # Example DataFrame
         data = {
-            "Title": "New Item Title",  # Replace 'Title' with your column name
-            "CustomColumn": "Value"    # Add other fields as required
+            "Title": ["Item 1", "Item 2", "Item 3"],  # Replace 'Title' with column names in SharePoint
+            "CustomColumn": ["Value1", "Value2", "Value3"],
         }
-        create_list_item(ctx, LIST_NAME, data)
+        df = pd.DataFrame(data)
+
+        # Authenticate and insert data
+        ctx = get_context(SITE_URL, CLIENT_ID, CLIENT_SECRET)
+        insert_dataframe_to_sharepoint(ctx, LIST_NAME, df)
     except Exception as e:
         print("Error:", str(e))
