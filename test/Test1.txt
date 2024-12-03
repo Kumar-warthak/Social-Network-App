@@ -1,87 +1,46 @@
+from pymongo import MongoClient
 import pandas as pd
-from office365.sharepoint.client_context import ClientContext
-from office365.runtime.auth.client_credential import ClientCredential
 
-# Constants
-SITE_URL = "https://yourtenant.sharepoint.com/sites/yoursite"
-CLIENT_ID = "your-client-id"
-CLIENT_SECRET = "your-client-secret"
-LIST_NAME = "YourListName"
+# MongoDB connection
+client = MongoClient("mongodb://localhost:27017/")  # Replace with your MongoDB URI
+db = client["your_database_name"]  # Replace with your database name
 
-# Authenticate
-def get_context(site_url, client_id, client_secret):
-    credentials = ClientCredential(client_id, client_secret)
-    ctx = ClientContext(site_url).with_credentials(credentials)
-    return ctx
+# Define collections
+orders_collection = db["orders"]
+customers_collection = db["customers"]
 
-# Resolve email to SharePoint user ID
-def get_user_id(context, email):
-    user = context.web.ensure_user(email).execute_query()
-    return user.properties["Id"]
-
-# Insert only specified columns from filtered DataFrame
-def insert_filtered_data_to_sharepoint(context, list_name, dataframe, column_mapping, filter_column, filter_value):
-    """
-    Insert data from rows where `filter_column` == `filter_value`.
-
-    Args:
-    - context: Authenticated SharePoint client context
-    - list_name: Name of the SharePoint list
-    - dataframe: Pandas DataFrame with data
-    - column_mapping: Dict mapping DataFrame columns to SharePoint list columns
-    - filter_column: DataFrame column to filter on
-    - filter_value: Value to filter by
-    """
-    # Filter the DataFrame
-    filtered_df = dataframe[dataframe[filter_column] == filter_value]
-    
-    if filtered_df.empty:
-        print(f"No rows found where {filter_column} equals '{filter_value}'.")
-        return
-
-    sp_list = context.web.lists.get_by_title(list_name)
-
-    for _, row in filtered_df.iterrows():
-        item_data = {}
-        
-        for df_col, sp_col in column_mapping.items():
-            if "Person" in sp_col:  # Handle Person field mapping
-                user_id = get_user_id(context, row[df_col])
-                item_data[f"{sp_col}Id"] = user_id  # Person field requires ID
-            else:
-                item_data[sp_col] = row[df_col]
-
-        # Add SharePoint metadata
-        item_data["__metadata"] = {"type": f"SP.Data.{list_name}ListItem"}
-
-        # Add the item to the SharePoint list
-        sp_list.add_item(item_data).execute_query()
-        print(f"Inserted: {item_data}")
-
-# Example Usage
-if __name__ == "__main__":
-    try:
-        # Example DataFrame
-        data = {
-            "df_title": ["Task A", "Task B", "Task C"],
-            "df_description": ["Desc A", "Desc B", "Desc C"],
-            "df_priority": ["High", "Low", "High"],  # Column to filter
-            "df_email": ["user1@example.com", "user2@example.com", "user3@example.com"],  # Email for Person field
+# Define the aggregation pipeline
+pipeline = [
+    {
+        "$lookup": {
+            "from": "customers",  # The collection to join with
+            "localField": "customer_id",  # Field in the 'orders' collection
+            "foreignField": "_id",  # Field in the 'customers' collection
+            "as": "customer_info"  # Alias for the joined data
         }
-        df = pd.DataFrame(data)
-
-        # Column mapping: DataFrame column -> SharePoint column
-        column_mapping = {
-            "df_title": "Title",           # Map 'df_title' to SharePoint 'Title'
-            "df_description": "Description", # Map 'df_description' to SharePoint 'Description'
-            "df_email": "AssignedTo"       # Map 'df_email' to SharePoint Person field 'AssignedTo'
+    },
+    {
+        "$unwind": "$customer_info"  # Flatten the customer_info array (if there's one match per order)
+    },
+    {
+        "$project": {
+            "order_id": 1,
+            "order_date": 1,
+            "customer_info.name": 1,
+            "customer_info.email": 1,
+            "_id": 0  # Exclude the default '_id' field
         }
+    }
+]
 
-        # Filter and insert
-        filter_column = "df_priority"  # Column to filter on
-        filter_value = "High"          # Filter for 'High' priority rows
+# Execute the aggregation query
+data = list(orders_collection.aggregate(pipeline))
 
-        ctx = get_context(SITE_URL, CLIENT_ID, CLIENT_SECRET)
-        insert_filtered_data_to_sharepoint(ctx, LIST_NAME, df, column_mapping, filter_column, filter_value)
-    except Exception as e:
-        print("Error:", str(e))
+# Convert to Pandas DataFrame
+df = pd.DataFrame(data)
+
+# Display the DataFrame
+print(df)
+
+# Optionally, save to a CSV file
+df.to_csv("output.csv", index=False)
