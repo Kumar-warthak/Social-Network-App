@@ -1,46 +1,24 @@
-from pymongo import MongoClient
-import pandas as pd
-
-# MongoDB connection
-client = MongoClient("mongodb://localhost:27017/")  # Replace with your MongoDB URI
-db = client["your_database_name"]  # Replace with your database name
-
-# Define collections
-orders_collection = db["orders"]
-customers_collection = db["customers"]
-
-# Define the aggregation pipeline
-pipeline = [
-    {
-        "$lookup": {
-            "from": "customers",  # The collection to join with
-            "localField": "customer_id",  # Field in the 'orders' collection
-            "foreignField": "_id",  # Field in the 'customers' collection
-            "as": "customer_info"  # Alias for the joined data
-        }
-    },
-    {
-        "$unwind": "$customer_info"  # Flatten the customer_info array (if there's one match per order)
-    },
-    {
-        "$project": {
-            "order_id": 1,
-            "order_date": 1,
-            "customer_info.name": 1,
-            "customer_info.email": 1,
-            "_id": 0  # Exclude the default '_id' field
-        }
-    }
-]
-
-# Execute the aggregation query
-data = list(orders_collection.aggregate(pipeline))
-
-# Convert to Pandas DataFrame
-df = pd.DataFrame(data)
-
-# Display the DataFrame
-print(df)
-
-# Optionally, save to a CSV file
-df.to_csv("output.csv", index=False)
+Sub ExportRangeToPDF()
+    Dim ws As Worksheet
+    Dim rng As Range
+    Dim pdfPath As String
+    
+    ' Set the worksheet and range to export
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change to your desired sheet name
+    Set rng = ws.Range("A1:D20") ' Change to your desired range
+    
+    ' Define the output PDF file path
+    pdfPath = ThisWorkbook.Path & "\ExportedRange.pdf" ' Saves in the same folder as the workbook
+    
+    ' Export the range as a PDF
+    On Error Resume Next
+    rng.ExportAsFixedFormat Type:=xlTypePDF, _
+                            Filename:=pdfPath, _
+                            Quality:=xlQualityStandard, _
+                            IncludeDocProperties:=True, _
+                            IgnorePrintAreas:=False, _
+                            OpenAfterPublish:=True
+                            
+    ' Confirmation message
+    MsgBox "PDF successfully created at: " & pdfPath, vbInformation, "Export Complete"
+End Sub
