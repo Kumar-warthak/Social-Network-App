@@ -8,12 +8,10 @@ function main(workbook: ExcelScript.Workbook, csvData: string, sheetName: string
 
   const headers = rows[0].split(",");
 
-  // Create or clear the worksheet
+  // Access the existing worksheet
   let sheet = workbook.getWorksheet(sheetName);
   if (!sheet) {
-    sheet = workbook.addWorksheet(sheetName);
-  } else {
-    sheet.getUsedRange()?.clear();
+    throw new Error(`The worksheet '${sheetName}' does not exist.`);
   }
 
   // Write headers to the first row
