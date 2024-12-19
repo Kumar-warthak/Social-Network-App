@@ -1,70 +1,42 @@
-Sub ExportFileRangeToPDF()
-    Dim ws As Worksheet
-    Dim rng As Range
-    Dim inputFilePath As String
-    Dim inputWorkbook As Workbook
-    Dim pdfPath As String
-    Dim fileName As String
-    Dim fileDialog As FileDialog
-    
-    ' Step 1: Select the Input Excel File
-    Set fileDialog = Application.FileDialog(msoFileDialogFilePicker)
-    fileDialog.Title = "Select Input Excel File"
-    fileDialog.Filters.Clear
-    fileDialog.Filters.Add "Excel Files", "*.xlsx; *.xlsm; *.xls"
-    
-    If fileDialog.Show = -1 Then ' If user selects a file
-        inputFilePath = fileDialog.SelectedItems(1)
-    Else
-        MsgBox "No file selected. Operation canceled.", vbExclamation, "Canceled"
-        Exit Sub
-    End If
-    
-    ' Step 2: Open the Input Workbook
-    Set inputWorkbook = Workbooks.Open(inputFilePath)
-    
-    ' Set the worksheet and range to export
-    On Error Resume Next
-    Set ws = inputWorkbook.Sheets(1) ' You can update this to target a specific sheet
-    Set rng = ws.Range("A1:D20") ' Update the range as needed
-    On Error GoTo 0
-    
-    If rng Is Nothing Then
-        MsgBox "Invalid range or worksheet. Please check the file.", vbCritical, "Error"
-        inputWorkbook.Close SaveChanges:=False
-        Exit Sub
-    End If
-    
-    ' Step 3: Prompt User to Select Output Folder and Enter File Name
-    Set fileDialog = Application.FileDialog(msoFileDialogFolderPicker)
-    fileDialog.Title = "Select Folder to Save PDF"
-    
-    If fileDialog.Show = -1 Then ' If user selects a folder
-        pdfPath = fileDialog.SelectedItems(1) ' Get the folder path
-        
-        ' Ask for file name
-        fileName = InputBox("Enter the file name for the PDF:", "File Name", "ExportedRange")
-        
-        If fileName <> "" Then ' Ensure file name is entered
-            pdfPath = pdfPath & "\" & fileName & ".pdf"
-            
-            ' Step 4: Export the Range to PDF
-            rng.ExportAsFixedFormat Type:=xlTypePDF, _
-                                    Filename:=pdfPath, _
-                                    Quality:=xlQualityStandard, _
-                                    IncludeDocProperties:=True, _
-                                    IgnorePrintAreas:=False, _
-                                    OpenAfterPublish:=True
-                                    
-            ' Confirmation message
-            MsgBox "PDF successfully created at: " & pdfPath, vbInformation, "Export Complete"
-        Else
-            MsgBox "No file name entered. Export canceled.", vbExclamation, "Canceled"
-        End If
-    Else
-        MsgBox "No folder selected. Export canceled.", vbExclamation, "Canceled"
-    End If
-    
-    ' Step 5: Close the Input Workbook
-    inputWorkbook.Close SaveChanges:=False
-End Sub
+function main(workbook: ExcelScript.Workbook, csvData: string, sheetName: string) {
+  // Maximum number of rows to process in one chunk
+  const CHUNK_SIZE = 5000;
+
+  // Split CSV data into rows
+  let rows = csvData.split("\n");
+  
+  // Handle edge case for empty CSV
+  if (rows.length === 0) {
+    throw new Error("The provided CSV data is empty.");
+  }
+
+  // Split the first row into headers
+  let headers = rows[0].split(",");
+  
+  // Check if the sheet already exists
+  let sheet = workbook.getWorksheet(sheetName);
+  if (!sheet) {
+    sheet = workbook.addWorksheet(sheetName);
+  } else {
+    sheet.getUsedRange()?.clear();
+  }
+
+  // Write headers to the sheet
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+
+  // Process rows in chunks
+  for (let startRow = 1; startRow < rows.length; startRow += CHUNK_SIZE) {
+    // Extract the current chunk
+    let endRow = Math.min(startRow + CHUNK_SIZE, rows.length);
+    let chunk = rows.slice(startRow, endRow);
+
+    // Split each row in the chunk into columns
+    let chunkData = chunk.map(row => row.split(","));
+
+    // Write the chunk to the worksheet
+    sheet.getRange(startRow + 1, 1, chunkData.length, headers.length).setValues(chunkData);
+  }
+
+  // Autofit columns for better visibility
+  sheet.getUsedRange()?.getFormat()?.autofitColumns();
+}
