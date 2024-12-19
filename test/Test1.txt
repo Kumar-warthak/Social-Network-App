@@ -1,19 +1,14 @@
 function main(workbook: ExcelScript.Workbook, csvData: string, sheetName: string) {
-  // Maximum number of rows to process in one chunk
-  const CHUNK_SIZE = 5000;
+  const CHUNK_SIZE = 5000; // Maximum rows per chunk
+  const rows = csvData.split("\n");
 
-  // Split CSV data into rows
-  let rows = csvData.split("\n");
-  
-  // Handle edge case for empty CSV
   if (rows.length === 0) {
     throw new Error("The provided CSV data is empty.");
   }
 
-  // Split the first row into headers
-  let headers = rows[0].split(",");
-  
-  // Check if the sheet already exists
+  const headers = rows[0].split(",");
+
+  // Create or clear the worksheet
   let sheet = workbook.getWorksheet(sheetName);
   if (!sheet) {
     sheet = workbook.addWorksheet(sheetName);
@@ -21,22 +16,23 @@ function main(workbook: ExcelScript.Workbook, csvData: string, sheetName: string
     sheet.getUsedRange()?.clear();
   }
 
-  // Write headers to the sheet
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  // Write headers to the first row
+  sheet.getRangeByIndexes(0, 0, 1, headers.length).setValues([headers]);
 
-  // Process rows in chunks
+  // Process the data in chunks
   for (let startRow = 1; startRow < rows.length; startRow += CHUNK_SIZE) {
-    // Extract the current chunk
-    let endRow = Math.min(startRow + CHUNK_SIZE, rows.length);
-    let chunk = rows.slice(startRow, endRow);
+    const endRow = Math.min(startRow + CHUNK_SIZE, rows.length);
+    const chunk = rows.slice(startRow, endRow);
+    const chunkData = chunk.map(row => row.split(","));
 
-    // Split each row in the chunk into columns
-    let chunkData = chunk.map(row => row.split(","));
-
-    // Write the chunk to the worksheet
-    sheet.getRange(startRow + 1, 1, chunkData.length, headers.length).setValues(chunkData);
+    sheet.getRangeByIndexes(
+      startRow, // Start row (1-based index)
+      0,        // Start column (0-based index)
+      chunkData.length,
+      headers.length
+    ).setValues(chunkData);
   }
 
-  // Autofit columns for better visibility
+  // Autofit columns
   sheet.getUsedRange()?.getFormat()?.autofitColumns();
 }
