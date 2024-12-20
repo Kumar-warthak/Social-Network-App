@@ -1,36 +1,12 @@
-function main(workbook: ExcelScript.Workbook, csvData: string, sheetName: string) {
-  const CHUNK_SIZE = 5000; // Maximum rows per chunk
-  const rows = csvData.split("\n");
-
-  if (rows.length === 0) {
-    throw new Error("The provided CSV data is empty.");
-  }
-
-  const headers = rows[0].split(",");
+function main(workbook: ExcelScript.Workbook, csvChunk: string, sheetName: string, startRow: number) {
+  const rows = csvChunk.split("\n").map(row => row.split(","));
 
   // Access the existing worksheet
-  let sheet = workbook.getWorksheet(sheetName);
+  const sheet = workbook.getWorksheet(sheetName);
   if (!sheet) {
     throw new Error(`The worksheet '${sheetName}' does not exist.`);
   }
 
-  // Write headers to the first row
-  sheet.getRangeByIndexes(0, 0, 1, headers.length).setValues([headers]);
-
-  // Process the data in chunks
-  for (let startRow = 1; startRow < rows.length; startRow += CHUNK_SIZE) {
-    const endRow = Math.min(startRow + CHUNK_SIZE, rows.length);
-    const chunk = rows.slice(startRow, endRow);
-    const chunkData = chunk.map(row => row.split(","));
-
-    sheet.getRangeByIndexes(
-      startRow, // Start row (1-based index)
-      0,        // Start column (0-based index)
-      chunkData.length,
-      headers.length
-    ).setValues(chunkData);
-  }
-
-  // Autofit columns
-  sheet.getUsedRange()?.getFormat()?.autofitColumns();
+  // Write the chunk to the worksheet starting from the specified row
+  sheet.getRangeByIndexes(startRow, 0, rows.length, rows[0].length).setValues(rows);
 }
