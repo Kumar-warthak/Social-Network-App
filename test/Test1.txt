@@ -1,12 +1,20 @@
-function main(workbook: ExcelScript.Workbook, csvChunk: string, sheetName: string, startRow: number) {
-  const rows = csvChunk.split("\n").map(row => row.split(","));
+function main(workbook: ExcelScript.Workbook, csv: string) {
+  let sheet = workbook.getWorksheet("Sheet1");
 
-  // Access the existing worksheet
-  const sheet = workbook.getWorksheet(sheetName);
-  if (!sheet) {
-    throw new Error(`The worksheet '${sheetName}' does not exist.`);
-  }
+  // Remove any Windows \r characters.
+  csv = csv.replace(/\r/g, "");
 
-  // Write the chunk to the worksheet starting from the specified row
-  sheet.getRangeByIndexes(startRow, 0, rows.length, rows[0].length).setValues(rows);
+  // Split each line into a row.
+  let rows = csv.split("\n");
+
+  // For each row, match the comma-separated sections.
+  const csvMatchRegex = /(?:,|\n|^)("(?:(?:"")*[^"]*)*"|[^",\n]*|(?:\n|$))/g;
+  rows.forEach((value, index) => {
+    if (value.length > 0) {
+      let row = value.match(csvMatchRegex);
+      row.forEach((cell, cellIndex) => {
+        sheet.getCell(index, cellIndex).setValue(cell.replace(/^"|"$/g, '').replace(/""/g, '"'));
+      });
+    }
+  });
 }
