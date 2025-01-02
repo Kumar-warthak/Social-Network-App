@@ -1,20 +1,17 @@
-function main(workbook: ExcelScript.Workbook, csv: string) {
-  let sheet = workbook.getWorksheet("Sheet1");
+from datetime import datetime
+from OpenSSL import crypto
 
-  // Remove any Windows \r characters.
-  csv = csv.replace(/\r/g, "");
+# Load certificate
+with open("path/to/certificate.txt", "rb") as cert_file:
+    cert_data = cert_file.read()
+    cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_data)
 
-  // Split each line into a row.
-  let rows = csv.split("\n");
+# Get expiration date
+not_after = cert.get_notAfter().decode("utf-8")
+expiry_date = datetime.strptime(not_after, "%Y%m%d%H%M%SZ")
 
-  // For each row, match the comma-separated sections.
-  const csvMatchRegex = /(?:,|\n|^)("(?:(?:"")*[^"]*)*"|[^",\n]*|(?:\n|$))/g;
-  rows.forEach((value, index) => {
-    if (value.length > 0) {
-      let row = value.match(csvMatchRegex);
-      row.forEach((cell, cellIndex) => {
-        sheet.getCell(index, cellIndex).setValue(cell.replace(/^"|"$/g, '').replace(/""/g, '"'));
-      });
-    }
-  });
-}
+# Check if expired
+if expiry_date < datetime.now():
+    print("Certificate has expired!")
+else:
+    print("Certificate is valid until:", expiry_date)
