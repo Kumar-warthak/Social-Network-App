@@ -1,17 +1,86 @@
-from datetime import datetime
-from OpenSSL import crypto
+Sub MergePDFsBasedOnRange()
+    Dim pdfApp As Object
+    Dim pdfDoc As Object
+    Dim combinedDoc As Object
+    Dim folderPath As String
+    Dim outputFileName As String
+    Dim fileName As String
+    Dim rng As Range
+    Dim cell As Range
+    Dim filesToMerge As Collection
+    Dim i As Long
 
-# Load certificate
-with open("path/to/certificate.txt", "rb") as cert_file:
-    cert_data = cert_file.read()
-    cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_data)
+    ' Define the range containing PDF file names
+    Set rng = ThisWorkbook.Sheets("Sheet1").Range("A1:A10") ' Adjust the range as needed
 
-# Get expiration date
-not_after = cert.get_notAfter().decode("utf-8")
-expiry_date = datetime.strptime(not_after, "%Y%m%d%H%M%SZ")
+    ' Get the folder path containing the PDFs
+    folderPath = ThisWorkbook.Path ' Assuming PDFs are in the same folder as the workbook
+    If folderPath = "" Then
+        MsgBox "Save the workbook first to determine the folder path.", vbExclamation, "Error"
+        Exit Sub
+    End If
 
-# Check if expired
-if expiry_date < datetime.now():
-    print("Certificate has expired!")
-else:
-    print("Certificate is valid until:", expiry_date)
+    ' Set output file name
+    outputFileName = folderPath & "\MergedFile.pdf"
+
+    ' Initialize Adobe Acrobat
+    On Error Resume Next
+    Set pdfApp = CreateObject("AcroExch.App")
+    Set combinedDoc = CreateObject("AcroExch.PDDoc")
+    On Error GoTo 0
+
+    If pdfApp Is Nothing Or combinedDoc Is Nothing Then
+        MsgBox "Adobe Acrobat is not installed or the reference is missing.", vbCritical, "Error"
+        Exit Sub
+    End If
+
+    ' Initialize collection to store files to merge
+    Set filesToMerge = New Collection
+
+    ' Loop through the range and collect file paths
+    For Each cell In rng
+        fileName = Trim(cell.Value)
+        If fileName <> "" Then
+            If Dir(folderPath & "\" & fileName & ".pdf") <> "" Then
+                filesToMerge.Add folderPath & "\" & fileName & ".pdf"
+            Else
+                MsgBox "File not found: " & folderPath & "\" & fileName & ".pdf", vbExclamation, "Missing File"
+            End If
+        End If
+    Next cell
+
+    ' Merge PDFs one by one
+    On Error GoTo ErrorHandler
+    If filesToMerge.Count > 0 Then
+        ' Open the first PDF
+        combinedDoc.Open filesToMerge(1)
+
+        ' Add the rest of the PDFs
+        For i = 2 To filesToMerge.Count
+            Set pdfDoc = CreateObject("AcroExch.PDDoc")
+            pdfDoc.Open filesToMerge(i)
+            combinedDoc.InsertPages(combinedDoc.GetNumPages - 1, pdfDoc, 0, pdfDoc.GetNumPages, True)
+            pdfDoc.Close
+            Set pdfDoc = Nothing
+        Next i
+
+        ' Save the combined PDF
+        combinedDoc.Save 1, outputFileName
+        MsgBox "PDFs successfully merged to: " & outputFileName, vbInformation, "Merge Complete"
+    Else
+        MsgBox "No valid PDF files found to merge.", vbExclamation, "No Files"
+    End If
+
+Cleanup:
+    ' Close and clean up
+    If Not combinedDoc Is Nothing Then combinedDoc.Close
+    If Not pdfApp Is Nothing Then pdfApp.Exit
+    Set pdfDoc = Nothing
+    Set combinedDoc = Nothing
+    Set pdfApp = Nothing
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "An error occurred while merging PDFs.", vbCritical, "Error"
+    Resume Cleanup
+End Sub
