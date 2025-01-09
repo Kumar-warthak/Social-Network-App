@@ -1,86 +1,101 @@
-Sub MergePDFsBasedOnRange()
-    Dim pdfApp As Object
-    Dim pdfDoc As Object
-    Dim combinedDoc As Object
-    Dim folderPath As String
-    Dim outputFileName As String
-    Dim fileName As String
-    Dim rng As Range
+Sub GenerateAndMergePDFsWithSkip()
+    Dim ws As Worksheet
+    Dim sourceRange As Range
     Dim cell As Range
-    Dim filesToMerge As Collection
-    Dim i As Long
+    Dim outputColumn As Range
+    Dim referenceColumn As Range
+    Dim baseName As String
+    Dim modifiedName As String
+    Dim additionalText As String
+    Dim row As Long
+    Dim pdfFolder As String
+    Dim fileNames As Collection
+    Dim fileName As String
+    Dim mergedPDF As String
+    Dim objAcroApp As Object
+    Dim objAcroPDDoc As Object
+    Dim objAcroPDDocMerge As Object
 
-    ' Define the range containing PDF file names
-    Set rng = ThisWorkbook.Sheets("Sheet1").Range("A1:A10") ' Adjust the range as needed
+    ' Set the worksheet and folder
+    Set ws = ThisWorkbook.Sheets(1) ' Change as needed
+    Set sourceRange = ws.Range("A2:A" & ws.Cells(ws.Rows.Count, "A").End(xlUp).Row) ' Column A for base names
+    Set outputColumn = ws.Range("B2") ' Output starts in Column B
+    Set referenceColumn = ws.Range("C2:C" & ws.Cells(ws.Rows.Count, "C").End(xlUp).Row) ' Column C for reference (Yes/No)
+    pdfFolder = ThisWorkbook.Path & "\" ' PDFs should be in the same folder as the workbook
 
-    ' Get the folder path containing the PDFs
-    folderPath = ThisWorkbook.Path ' Assuming PDFs are in the same folder as the workbook
-    If folderPath = "" Then
-        MsgBox "Save the workbook first to determine the folder path.", vbExclamation, "Error"
-        Exit Sub
-    End If
+    ' Define the text to append
+    additionalText = "_text"
 
-    ' Set output file name
-    outputFileName = folderPath & "\MergedFile.pdf"
+    ' Collection to store PDF file names in order
+    Set fileNames = New Collection
 
-    ' Initialize Adobe Acrobat
-    On Error Resume Next
-    Set pdfApp = CreateObject("AcroExch.App")
-    Set combinedDoc = CreateObject("AcroExch.PDDoc")
-    On Error GoTo 0
-
-    If pdfApp Is Nothing Or combinedDoc Is Nothing Then
-        MsgBox "Adobe Acrobat is not installed or the reference is missing.", vbCritical, "Error"
-        Exit Sub
-    End If
-
-    ' Initialize collection to store files to merge
-    Set filesToMerge = New Collection
-
-    ' Loop through the range and collect file paths
-    For Each cell In rng
-        fileName = Trim(cell.Value)
-        If fileName <> "" Then
-            If Dir(folderPath & "\" & fileName & ".pdf") <> "" Then
-                filesToMerge.Add folderPath & "\" & fileName & ".pdf"
+    ' Generate modified names and store in Column B, checking reference column
+    row = 0
+    For Each cell In sourceRange
+        If cell.Value <> "" Then
+            ' Get the base name
+            baseName = cell.Value
+            
+            ' Check if reference column value is "Yes" (skip if "No")
+            If referenceColumn.Cells(row + 1, 1).Value = "Yes" Then
+                ' Generate the modified name
+                modifiedName = baseName & additionalText & ".pdf"
+                
+                ' Write the modified name in the output column
+                outputColumn.Offset(row, 0).Value = modifiedName
+                
+                ' Store the full path of the PDF
+                fileNames.Add pdfFolder & modifiedName
             Else
-                MsgBox "File not found: " & folderPath & "\" & fileName & ".pdf", vbExclamation, "Missing File"
+                ' Write skipped message in the output column
+                outputColumn.Offset(row, 0).Value = "Skipped"
             End If
+            
+            row = row + 1
         End If
     Next cell
 
-    ' Merge PDFs one by one
-    On Error GoTo ErrorHandler
-    If filesToMerge.Count > 0 Then
-        ' Open the first PDF
-        combinedDoc.Open filesToMerge(1)
+    ' Output merged PDF path
+    mergedPDF = pdfFolder & "MergedPDF.pdf"
 
-        ' Add the rest of the PDFs
-        For i = 2 To filesToMerge.Count
-            Set pdfDoc = CreateObject("AcroExch.PDDoc")
-            pdfDoc.Open filesToMerge(i)
-            combinedDoc.InsertPages(combinedDoc.GetNumPages - 1, pdfDoc, 0, pdfDoc.GetNumPages, True)
-            pdfDoc.Close
-            Set pdfDoc = Nothing
-        Next i
-
-        ' Save the combined PDF
-        combinedDoc.Save 1, outputFileName
-        MsgBox "PDFs successfully merged to: " & outputFileName, vbInformation, "Merge Complete"
-    Else
-        MsgBox "No valid PDF files found to merge.", vbExclamation, "No Files"
+    ' Merge PDFs in the order specified in Column B
+    On Error Resume Next
+    Set objAcroApp = CreateObject("AcroExch.App")
+    Set objAcroPDDocMerge = CreateObject("AcroExch.PDDoc")
+    On Error GoTo 0
+    
+    If objAcroApp Is Nothing Or objAcroPDDocMerge Is Nothing Then
+        MsgBox "Adobe Acrobat is not available. Ensure it is installed.", vbCritical, "Error"
+        Exit Sub
     End If
-
-Cleanup:
-    ' Close and clean up
-    If Not combinedDoc Is Nothing Then combinedDoc.Close
-    If Not pdfApp Is Nothing Then pdfApp.Exit
-    Set pdfDoc = Nothing
-    Set combinedDoc = Nothing
-    Set pdfApp = Nothing
-    Exit Sub
-
-ErrorHandler:
-    MsgBox "An error occurred while merging PDFs.", vbCritical, "Error"
-    Resume Cleanup
+    
+    ' Open the first PDF to initialize the merge
+    If fileNames.Count > 0 Then
+        Set objAcroPDDoc = CreateObject("AcroExch.PDDoc")
+        objAcroPDDoc.Open fileNames(1)
+        objAcroPDDocMerge.Open fileNames(1)
+        objAcroPDDoc.Close
+        
+        ' Loop through the remaining PDFs and add them to the merged document
+        For row = 2 To fileNames.Count
+            Set objAcroPDDoc = CreateObject("AcroExch.PDDoc")
+            objAcroPDDoc.Open fileNames(row)
+            objAcroPDDocMerge.InsertPages objAcroPDDocMerge.GetNumPages - 1, objAcroPDDoc, 0, objAcroPDDoc.GetNumPages, False
+            objAcroPDDoc.Close
+        Next row
+        
+        ' Save the merged PDF
+        objAcroPDDocMerge.Save 1, mergedPDF
+        objAcroPDDocMerge.Close
+        objAcroApp.Exit
+        
+        ' Clean up
+        Set objAcroPDDoc = Nothing
+        Set objAcroPDDocMerge = Nothing
+        Set objAcroApp = Nothing
+        
+        MsgBox "All PDFs have been merged into: " & mergedPDF, vbInformation, "Merge Complete"
+    Else
+        MsgBox "No PDFs to merge. Please check the reference column.", vbInformation, "No PDFs to Merge"
+    End If
 End Sub
