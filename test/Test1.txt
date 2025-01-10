@@ -1,101 +1,49 @@
-Sub GenerateAndMergePDFsWithSkip()
-    Dim ws As Worksheet
-    Dim sourceRange As Range
-    Dim cell As Range
-    Dim outputColumn As Range
-    Dim referenceColumn As Range
-    Dim baseName As String
-    Dim modifiedName As String
-    Dim additionalText As String
-    Dim row As Long
-    Dim pdfFolder As String
-    Dim fileNames As Collection
-    Dim fileName As String
-    Dim mergedPDF As String
-    Dim objAcroApp As Object
-    Dim objAcroPDDoc As Object
-    Dim objAcroPDDocMerge As Object
+import pandas as pd
+import cx_Oracle
 
-    ' Set the worksheet and folder
-    Set ws = ThisWorkbook.Sheets(1) ' Change as needed
-    Set sourceRange = ws.Range("A2:A" & ws.Cells(ws.Rows.Count, "A").End(xlUp).Row) ' Column A for base names
-    Set outputColumn = ws.Range("B2") ' Output starts in Column B
-    Set referenceColumn = ws.Range("C2:C" & ws.Cells(ws.Rows.Count, "C").End(xlUp).Row) ' Column C for reference (Yes/No)
-    pdfFolder = ThisWorkbook.Path & "\" ' PDFs should be in the same folder as the workbook
+# Sample DataFrame
+data = {
+    "id": [1, 2, 3],
+    "name": ["Alice", "Bob", "Charlie"],
+    "age": [25, 30, 35]
+}
+df = pd.DataFrame(data)
 
-    ' Define the text to append
-    additionalText = "_text"
+# Database connection details
+hostname = "your_hostname"  # e.g., "192.168.1.100"
+port = "your_port"          # e.g., "1521"
+service_name = "your_service_name"  # e.g., "ORCL"
+username = "your_username"
+password = "your_password"
 
-    ' Collection to store PDF file names in order
-    Set fileNames = New Collection
+# Create a DSN (Data Source Name)
+dsn = cx_Oracle.makedsn(hostname, port, service_name=service_name)
 
-    ' Generate modified names and store in Column B, checking reference column
-    row = 0
-    For Each cell In sourceRange
-        If cell.Value <> "" Then
-            ' Get the base name
-            baseName = cell.Value
-            
-            ' Check if reference column value is "Yes" (skip if "No")
-            If referenceColumn.Cells(row + 1, 1).Value = "Yes" Then
-                ' Generate the modified name
-                modifiedName = baseName & additionalText & ".pdf"
-                
-                ' Write the modified name in the output column
-                outputColumn.Offset(row, 0).Value = modifiedName
-                
-                ' Store the full path of the PDF
-                fileNames.Add pdfFolder & modifiedName
-            Else
-                ' Write skipped message in the output column
-                outputColumn.Offset(row, 0).Value = "Skipped"
-            End If
-            
-            row = row + 1
-        End If
-    Next cell
+try:
+    # Establish the connection
+    conn = cx_Oracle.connect(user=username, password=password, dsn=dsn)
+    cursor = conn.cursor()
+    print("Connected to the database!")
 
-    ' Output merged PDF path
-    mergedPDF = pdfFolder & "MergedPDF.pdf"
+    # Insert rows from DataFrame
+    for index, row in df.iterrows():
+        cursor.execute(
+            """
+            INSERT INTO your_table_name (id, name, age)
+            VALUES (:1, :2, :3)
+            """,
+            (row["id"], row["name"], row["age"])
+        )
 
-    ' Merge PDFs in the order specified in Column B
-    On Error Resume Next
-    Set objAcroApp = CreateObject("AcroExch.App")
-    Set objAcroPDDocMerge = CreateObject("AcroExch.PDDoc")
-    On Error GoTo 0
-    
-    If objAcroApp Is Nothing Or objAcroPDDocMerge Is Nothing Then
-        MsgBox "Adobe Acrobat is not available. Ensure it is installed.", vbCritical, "Error"
-        Exit Sub
-    End If
-    
-    ' Open the first PDF to initialize the merge
-    If fileNames.Count > 0 Then
-        Set objAcroPDDoc = CreateObject("AcroExch.PDDoc")
-        objAcroPDDoc.Open fileNames(1)
-        objAcroPDDocMerge.Open fileNames(1)
-        objAcroPDDoc.Close
-        
-        ' Loop through the remaining PDFs and add them to the merged document
-        For row = 2 To fileNames.Count
-            Set objAcroPDDoc = CreateObject("AcroExch.PDDoc")
-            objAcroPDDoc.Open fileNames(row)
-            objAcroPDDocMerge.InsertPages objAcroPDDocMerge.GetNumPages - 1, objAcroPDDoc, 0, objAcroPDDoc.GetNumPages, False
-            objAcroPDDoc.Close
-        Next row
-        
-        ' Save the merged PDF
-        objAcroPDDocMerge.Save 1, mergedPDF
-        objAcroPDDocMerge.Close
-        objAcroApp.Exit
-        
-        ' Clean up
-        Set objAcroPDDoc = Nothing
-        Set objAcroPDDocMerge = Nothing
-        Set objAcroApp = Nothing
-        
-        MsgBox "All PDFs have been merged into: " & mergedPDF, vbInformation, "Merge Complete"
-    Else
-        MsgBox "No PDFs to merge. Please check the reference column.", vbInformation, "No PDFs to Merge"
-    End If
-End Sub
+    # Commit the transaction
+    conn.commit()
+    print("Data inserted successfully!")
+
+except cx_Oracle.DatabaseError as e:
+    print("Error:", e)
+
+finally:
+    # Close the connection
+    if conn:
+        cursor.close()
+        conn.close()
