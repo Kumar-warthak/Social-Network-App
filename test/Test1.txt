@@ -1,49 +1,74 @@
+import requests
 import pandas as pd
-import cx_Oracle
 
-# Sample DataFrame
-data = {
-    "id": [1, 2, 3],
-    "name": ["Alice", "Bob", "Charlie"],
-    "age": [25, 30, 35]
-}
-df = pd.DataFrame(data)
+def get_components_for_project(base_url, project_id, access_token):
+    """
+    Fetch components for a specific project using the Jira API.
 
-# Database connection details
-hostname = "your_hostname"  # e.g., "192.168.1.100"
-port = "your_port"          # e.g., "1521"
-service_name = "your_service_name"  # e.g., "ORCL"
-username = "your_username"
-password = "your_password"
+    Args:
+        base_url (str): Jira base URL (e.g., https://yourdomain.atlassian.net).
+        project_id (str): The project ID for which to fetch components.
+        access_token (str): Personal Access Token for authentication.
 
-# Create a DSN (Data Source Name)
-dsn = cx_Oracle.makedsn(hostname, port, service_name=service_name)
+    Returns:
+        list: List of components for the given project.
+    """
+    url = f"{base_url}/rest/api/2/projects/{project_id}/components"  # Dynamic URL
 
-try:
-    # Establish the connection
-    conn = cx_Oracle.connect(user=username, password=password, dsn=dsn)
-    cursor = conn.cursor()
-    print("Connected to the database!")
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json"
+    }
 
-    # Insert rows from DataFrame
-    for index, row in df.iterrows():
-        cursor.execute(
-            """
-            INSERT INTO your_table_name (id, name, age)
-            VALUES (:1, :2, :3)
-            """,
-            (row["id"], row["name"], row["age"])
-        )
+    response = requests.get(url, headers=headers)
 
-    # Commit the transaction
-    conn.commit()
-    print("Data inserted successfully!")
+    if response.status_code == 200:
+        return response.json()  # Return the list of components
+    else:
+        raise Exception(f"Failed to fetch components: {response.status_code} - {response.text}")
 
-except cx_Oracle.DatabaseError as e:
-    print("Error:", e)
+def loop_and_create_df(base_url, project_ids, access_token):
+    """
+    Loop through the list of project IDs, get components for each project and create a DataFrame.
 
-finally:
-    # Close the connection
-    if conn:
-        cursor.close()
-        conn.close()
+    Args:
+        base_url (str): Jira base URL (e.g., https://yourdomain.atlassian.net).
+        project_ids (list): List of project IDs.
+        access_token (str): Personal Access Token for authentication.
+
+    Returns:
+        pd.DataFrame: DataFrame containing components for all projects.
+    """
+    all_components = []  # List to store components data
+    
+    for project_id in project_ids:
+        try:
+            print(f"Fetching components for project ID: {project_id}")
+            components = get_components_for_project(base_url, project_id, access_token)
+            
+            # Add project_id to each component to identify from which project it belongs
+            for component in components:
+                component['project_id'] = project_id  # Add project_id to the component data
+                
+            all_components.extend(components)  # Add all components to the list
+        except Exception as e:
+            print(f"Error fetching components for project {project_id}: {str(e)}")
+    
+    # Create a DataFrame from the collected components
+    if all_components:
+        df = pd.DataFrame(all_components)
+        return df
+    else:
+        print("No components found.")
+        return None
+
+# Example Usage
+if __name__ == "__main__":
+    BASE_URL = "https://yourdomain.atlassian.net"  # Your Jira base URL
+    ACCESS_TOKEN = "your-personal-access-token"  # Your Jira PAT
+    PROJECT_IDS = ["10001", "10002", "10003"]  # List of project IDs
+
+    df = loop_and_create_df(BASE_URL, PROJECT_IDS, ACCESS_TOKEN)
+    
+    if df is not None:
+        print(df)  # Print the DataFrame
