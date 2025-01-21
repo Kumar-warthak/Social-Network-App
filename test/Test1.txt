@@ -29,7 +29,8 @@ def get_components_for_project(base_url, project_id, access_token):
 
 def loop_and_create_df(base_url, project_ids, access_token):
     """
-    Loop through the list of project IDs, get components for each project and create a DataFrame.
+    Loop through the list of project IDs, get components for each project, 
+    and create a DataFrame with all fields from the JSON response.
 
     Args:
         base_url (str): Jira base URL (e.g., https://yourdomain.atlassian.net).
@@ -37,7 +38,7 @@ def loop_and_create_df(base_url, project_ids, access_token):
         access_token (str): Personal Access Token for authentication.
 
     Returns:
-        pd.DataFrame: DataFrame containing components for all projects.
+        pd.DataFrame: DataFrame containing components for all projects with all fields.
     """
     all_components = []  # List to store components data
     
@@ -54,9 +55,10 @@ def loop_and_create_df(base_url, project_ids, access_token):
         except Exception as e:
             print(f"Error fetching components for project {project_id}: {str(e)}")
     
-    # Create a DataFrame from the collected components
+    # If no data was found
     if all_components:
-        df = pd.DataFrame(all_components)
+        # Create a DataFrame from the collected components
+        df = pd.json_normalize(all_components)  # Flatten the JSON and create DataFrame
         return df
     else:
         print("No components found.")
