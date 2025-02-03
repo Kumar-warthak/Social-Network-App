@@ -1,67 +1,109 @@
-import requests
-import json
-import msal
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.IO;
+using Microsoft.SqlServer.Dts.Runtime;
+using System.Web.Script.Serialization;
 
-# Azure AD Credentials
-CLIENT_ID = "your-client-id"
-CLIENT_SECRET = "your-client-secret"
-TENANT_ID = "your-tenant-id"
-TENANT_DOMAIN = "yourcompany.sharepoint.com"  # Replace with your actual domain
-SITE_NAME = "YourSiteName"  # Example: "HRPortal"
-DOCUMENT_LIBRARY_NAME = "Documents"  # Name of your document library
-FILE_PATH = "path/to/your/file.txt"
-UPLOAD_FILENAME = "file.txt"
+public void Main()
+{
+    // Azure AD credentials
+    string clientId = "your-client-id";
+    string clientSecret = "your-client-secret";
+    string tenantId = "your-tenant-id";
+    string tenantDomain = "yourcompany.sharepoint.com";  // Replace with your actual domain
+    string siteName = "YourSiteName";  // Example: "HRPortal"
+    string documentLibraryName = "Documents";  // Name of your document library
+    string filePath = @"path\to\your\file.txt"; // Path to the file you want to upload
+    string uploadFileName = "file.txt";  // File name in SharePoint
 
-# Authentication
-AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
+    // Initialize HttpClient for making requests
+    HttpClient client = new HttpClient();
+    
+    // Get the access token from Azure AD
+    string authority = $"https://login.microsoftonline.com/{tenantId}";
+    string graphApiUrl = "https://graph.microsoft.com/v1.0";
+    string tokenUrl = $"{authority}/oauth2/v2.0/token";
+    
+    var tokenRequest = new HttpRequestMessage(HttpMethod.Post, tokenUrl);
+    var tokenContent = new FormUrlEncodedContent(new[]
+    {
+        new KeyValuePair<string, string>("grant_type", "client_credentials"),
+        new KeyValuePair<string, string>("client_id", clientId),
+        new KeyValuePair<string, string>("client_secret", clientSecret),
+        new KeyValuePair<string, string>("scope", "https://graph.microsoft.com/.default")
+    });
+    tokenRequest.Content = tokenContent;
+    
+    HttpResponseMessage tokenResponse = client.SendAsync(tokenRequest).Result;
+    if (!tokenResponse.IsSuccessStatusCode)
+    {
+        Console.WriteLine("Error obtaining token: " + tokenResponse.Content.ReadAsStringAsync().Result);
+        Dts.TaskResult = (int)ScriptResults.Failure;
+        return;
+    }
 
-# Get Access Token
-app = msal.ConfidentialClientApplication(CLIENT_ID, CLIENT_SECRET, AUTHORITY)
-token_response = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
+    string accessToken = new JavaScriptSerializer().Deserialize<dynamic>(tokenResponse.Content.ReadAsStringAsync().Result)["access_token"];
+    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-if "access_token" not in token_response:
-    print("Error obtaining token:", token_response.get("error_description"))
-    exit()
+    // Step 1: Get SharePoint Site ID
+    string siteUrl = $"{graphApiUrl}/sites/{tenantDomain}:/sites/{siteName}?$select=id";
+    HttpResponseMessage siteResponse = client.GetAsync(siteUrl).Result;
+    if (!siteResponse.IsSuccessStatusCode)
+    {
+        Console.WriteLine("Error fetching site ID: " + siteResponse.Content.ReadAsStringAsync().Result);
+        Dts.TaskResult = (int)ScriptResults.Failure;
+        return;
+    }
 
-ACCESS_TOKEN = token_response["access_token"]
-HEADERS = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
+    string siteId = new JavaScriptSerializer().Deserialize<dynamic>(siteResponse.Content.ReadAsStringAsync().Result)["id"];
 
-# Step 1: Get SharePoint Site ID
-site_url = f"{GRAPH_API_URL}/sites/{TENANT_DOMAIN}:/sites/{SITE_NAME}?$select=id"
-site_response = requests.get(site_url, headers=HEADERS)
+    // Step 2: Get Document Library (Drive) ID
+    string driveUrl = $"{graphApiUrl}/sites/{siteId}/drives";
+    HttpResponseMessage driveResponse = client.GetAsync(driveUrl).Result;
+    if (!driveResponse.IsSuccessStatusCode)
+    {
+        Console.WriteLine("Error fetching document libraries: " + driveResponse.Content.ReadAsStringAsync().Result);
+        Dts.TaskResult = (int)ScriptResults.Failure;
+        return;
+    }
 
-if site_response.status_code != 200:
-    print("Error fetching site ID:", site_response.text)
-    exit()
+    // Find the correct document library
+    var drives = new JavaScriptSerializer().Deserialize<dynamic>(driveResponse.Content.ReadAsStringAsync().Result)["value"];
+    string driveId = null;
+    foreach (var drive in drives)
+    {
+        if (drive["name"] == documentLibraryName)
+        {
+            driveId = drive["id"];
+            break;
+        }
+    }
 
-SITE_ID = site_response.json()["id"]
+    if (string.IsNullOrEmpty(driveId))
+    {
+        Console.WriteLine($"Error: Document Library '{documentLibraryName}' not found.");
+        Dts.TaskResult = (int)ScriptResults.Failure;
+        return;
+    }
 
-# Step 2: Get Document Library (Drive) ID
-drive_url = f"{GRAPH_API_URL}/sites/{SITE_ID}/drives"
-drive_response = requests.get(drive_url, headers=HEADERS)
+    // Step 3: Upload File to Document Library
+    string uploadUrl = $"{graphApiUrl}/drives/{driveId}/root:/{uploadFileName}:/content";
+    byte[] fileBytes = File.ReadAllBytes(filePath);
 
-if drive_response.status_code != 200:
-    print("Error fetching document libraries:", drive_response.text)
-    exit()
+    var uploadContent = new ByteArrayContent(fileBytes);
+    uploadContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
 
-# Find the correct document library by name
-drive_data = drive_response.json()["value"]
-DOCUMENT_LIBRARY_ID = next(
-    (drive["id"] for drive in drive_data if drive["name"] == DOCUMENT_LIBRARY_NAME), None
-)
+    HttpResponseMessage uploadResponse = client.PutAsync(uploadUrl, uploadContent).Result;
 
-if not DOCUMENT_LIBRARY_ID:
-    print(f"Error: Document Library '{DOCUMENT_LIBRARY_NAME}' not found.")
-    exit()
-
-# Step 3: Upload File to Document Library
-upload_url = f"{GRAPH_API_URL}/drives/{DOCUMENT_LIBRARY_ID}/root:/{UPLOAD_FILENAME}:/content"
-
-with open(FILE_PATH, "rb") as file:
-    upload_response = requests.put(upload_url, headers=HEADERS, data=file)
-
-if upload_response.status_code in [200, 201]:
-    print("File uploaded successfully:", upload_response.json()["webUrl"])
-else:
-    print("Error uploading file:", upload_response.text)
+    if (uploadResponse.IsSuccessStatusCode)
+    {
+        Console.WriteLine("File uploaded successfully");
+        Dts.TaskResult = (int)ScriptResults.Success;
+    }
+    else
+    {
+        Console.WriteLine("Error uploading file: " + uploadResponse.Content.ReadAsStringAsync().Result);
+        Dts.TaskResult = (int)ScriptResults.Failure;
+    }
+}
