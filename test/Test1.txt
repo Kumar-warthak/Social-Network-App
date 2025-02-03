@@ -1,76 +1,67 @@
 import requests
-import pandas as pd
+import json
+import msal
 
-def get_components_for_project(base_url, project_id, access_token):
-    """
-    Fetch components for a specific project using the Jira API.
+# Azure AD Credentials
+CLIENT_ID = "your-client-id"
+CLIENT_SECRET = "your-client-secret"
+TENANT_ID = "your-tenant-id"
+TENANT_DOMAIN = "yourcompany.sharepoint.com"  # Replace with your actual domain
+SITE_NAME = "YourSiteName"  # Example: "HRPortal"
+DOCUMENT_LIBRARY_NAME = "Documents"  # Name of your document library
+FILE_PATH = "path/to/your/file.txt"
+UPLOAD_FILENAME = "file.txt"
 
-    Args:
-        base_url (str): Jira base URL (e.g., https://yourdomain.atlassian.net).
-        project_id (str): The project ID for which to fetch components.
-        access_token (str): Personal Access Token for authentication.
+# Authentication
+AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
+GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
 
-    Returns:
-        list: List of components for the given project.
-    """
-    url = f"{base_url}/rest/api/2/projects/{project_id}/components"  # Dynamic URL
+# Get Access Token
+app = msal.ConfidentialClientApplication(CLIENT_ID, CLIENT_SECRET, AUTHORITY)
+token_response = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Accept": "application/json"
-    }
+if "access_token" not in token_response:
+    print("Error obtaining token:", token_response.get("error_description"))
+    exit()
 
-    response = requests.get(url, headers=headers)
+ACCESS_TOKEN = token_response["access_token"]
+HEADERS = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
-    if response.status_code == 200:
-        return response.json()  # Return the list of components
-    else:
-        raise Exception(f"Failed to fetch components: {response.status_code} - {response.text}")
+# Step 1: Get SharePoint Site ID
+site_url = f"{GRAPH_API_URL}/sites/{TENANT_DOMAIN}:/sites/{SITE_NAME}?$select=id"
+site_response = requests.get(site_url, headers=HEADERS)
 
-def loop_and_create_df(base_url, project_ids, access_token):
-    """
-    Loop through the list of project IDs, get components for each project, 
-    and create a DataFrame with all fields from the JSON response.
+if site_response.status_code != 200:
+    print("Error fetching site ID:", site_response.text)
+    exit()
 
-    Args:
-        base_url (str): Jira base URL (e.g., https://yourdomain.atlassian.net).
-        project_ids (list): List of project IDs.
-        access_token (str): Personal Access Token for authentication.
+SITE_ID = site_response.json()["id"]
 
-    Returns:
-        pd.DataFrame: DataFrame containing components for all projects with all fields.
-    """
-    all_components = []  # List to store components data
-    
-    for project_id in project_ids:
-        try:
-            print(f"Fetching components for project ID: {project_id}")
-            components = get_components_for_project(base_url, project_id, access_token)
-            
-            # Add project_id to each component to identify from which project it belongs
-            for component in components:
-                component['project_id'] = project_id  # Add project_id to the component data
-                
-            all_components.extend(components)  # Add all components to the list
-        except Exception as e:
-            print(f"Error fetching components for project {project_id}: {str(e)}")
-    
-    # If no data was found
-    if all_components:
-        # Create a DataFrame from the collected components
-        df = pd.json_normalize(all_components)  # Flatten the JSON and create DataFrame
-        return df
-    else:
-        print("No components found.")
-        return None
+# Step 2: Get Document Library (Drive) ID
+drive_url = f"{GRAPH_API_URL}/sites/{SITE_ID}/drives"
+drive_response = requests.get(drive_url, headers=HEADERS)
 
-# Example Usage
-if __name__ == "__main__":
-    BASE_URL = "https://yourdomain.atlassian.net"  # Your Jira base URL
-    ACCESS_TOKEN = "your-personal-access-token"  # Your Jira PAT
-    PROJECT_IDS = ["10001", "10002", "10003"]  # List of project IDs
+if drive_response.status_code != 200:
+    print("Error fetching document libraries:", drive_response.text)
+    exit()
 
-    df = loop_and_create_df(BASE_URL, PROJECT_IDS, ACCESS_TOKEN)
-    
-    if df is not None:
-        print(df)  # Print the DataFrame
+# Find the correct document library by name
+drive_data = drive_response.json()["value"]
+DOCUMENT_LIBRARY_ID = next(
+    (drive["id"] for drive in drive_data if drive["name"] == DOCUMENT_LIBRARY_NAME), None
+)
+
+if not DOCUMENT_LIBRARY_ID:
+    print(f"Error: Document Library '{DOCUMENT_LIBRARY_NAME}' not found.")
+    exit()
+
+# Step 3: Upload File to Document Library
+upload_url = f"{GRAPH_API_URL}/drives/{DOCUMENT_LIBRARY_ID}/root:/{UPLOAD_FILENAME}:/content"
+
+with open(FILE_PATH, "rb") as file:
+    upload_response = requests.put(upload_url, headers=HEADERS, data=file)
+
+if upload_response.status_code in [200, 201]:
+    print("File uploaded successfully:", upload_response.json()["webUrl"])
+else:
+    print("Error uploading file:", upload_response.text)
