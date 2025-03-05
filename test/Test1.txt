@@ -1,109 +1,74 @@
-using System;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.IO;
-using Microsoft.SqlServer.Dts.Runtime;
-using System.Web.Script.Serialization;
+Sub ApplyDynamicRules()
+    Dim wsData As Worksheet, wsRules As Worksheet
+    Dim lastRowData As Long, lastRowRules As Long
+    Dim i As Long, j As Long
+    Dim rule As String, evalRule As String
+    Dim matchFound As Boolean
+    Dim colHeaders As Object
+    Dim cell As Range, header As String
+    Dim ruleParts As Variant, part As Variant
 
-public void Main()
-{
-    // Azure AD credentials
-    string clientId = "your-client-id";
-    string clientSecret = "your-client-secret";
-    string tenantId = "your-tenant-id";
-    string tenantDomain = "yourcompany.sharepoint.com";  // Replace with your actual domain
-    string siteName = "YourSiteName";  // Example: "HRPortal"
-    string documentLibraryName = "Documents";  // Name of your document library
-    string filePath = @"path\to\your\file.txt"; // Path to the file you want to upload
-    string uploadFileName = "file.txt";  // File name in SharePoint
+    ' Set worksheets
+    Set wsData = ThisWorkbook.Sheets("Sheet1")
+    Set wsRules = ThisWorkbook.Sheets("Sheet2")
 
-    // Initialize HttpClient for making requests
-    HttpClient client = new HttpClient();
+    ' Get last row of data and rules
+    lastRowData = wsData.Cells(wsData.Rows.Count, 1).End(xlUp).Row
+    lastRowRules = wsRules.Cells(wsRules.Rows.Count, 13).End(xlUp).Row ' Column M (13)
+
+    ' Create a dictionary to store column names and indexes
+    Set colHeaders = CreateObject("Scripting.Dictionary")
     
-    // Get the access token from Azure AD
-    string authority = $"https://login.microsoftonline.com/{tenantId}";
-    string graphApiUrl = "https://graph.microsoft.com/v1.0";
-    string tokenUrl = $"{authority}/oauth2/v2.0/token";
-    
-    var tokenRequest = new HttpRequestMessage(HttpMethod.Post, tokenUrl);
-    var tokenContent = new FormUrlEncodedContent(new[]
-    {
-        new KeyValuePair<string, string>("grant_type", "client_credentials"),
-        new KeyValuePair<string, string>("client_id", clientId),
-        new KeyValuePair<string, string>("client_secret", clientSecret),
-        new KeyValuePair<string, string>("scope", "https://graph.microsoft.com/.default")
-    });
-    tokenRequest.Content = tokenContent;
-    
-    HttpResponseMessage tokenResponse = client.SendAsync(tokenRequest).Result;
-    if (!tokenResponse.IsSuccessStatusCode)
-    {
-        Console.WriteLine("Error obtaining token: " + tokenResponse.Content.ReadAsStringAsync().Result);
-        Dts.TaskResult = (int)ScriptResults.Failure;
-        return;
-    }
+    ' Loop through first row (headers) in Sheet1 and store column names
+    For Each cell In wsData.Rows(1).Cells
+        If cell.Value <> "" Then
+            colHeaders(cell.Value) = cell.Column
+        End If
+    Next cell
 
-    string accessToken = new JavaScriptSerializer().Deserialize<dynamic>(tokenResponse.Content.ReadAsStringAsync().Result)["access_token"];
-    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+    ' Loop through each row in Sheet1
+    For i = 2 To lastRowData ' Assuming row 1 has headers
+        matchFound = False ' Reset match flag
 
-    // Step 1: Get SharePoint Site ID
-    string siteUrl = $"{graphApiUrl}/sites/{tenantDomain}:/sites/{siteName}?$select=id";
-    HttpResponseMessage siteResponse = client.GetAsync(siteUrl).Result;
-    if (!siteResponse.IsSuccessStatusCode)
-    {
-        Console.WriteLine("Error fetching site ID: " + siteResponse.Content.ReadAsStringAsync().Result);
-        Dts.TaskResult = (int)ScriptResults.Failure;
-        return;
-    }
+        ' Loop through each rule in Sheet2 (Column M)
+        For j = 1 To lastRowRules
+            rule = wsRules.Cells(j, 13).Value ' Get rule from Column M
+            
+            ' Convert Rule into VBA-compatible format
+            evalRule = rule
+            
+            ' Replace column names dynamically
+            ruleParts = Split(evalRule, " ")
+            For Each part In ruleParts
+                If colHeaders.exists(part) Then
+                    evalRule = Replace(evalRule, part, """" & wsData.Cells(i, colHeaders(part)).Value & """")
+                End If
+            Next part
 
-    string siteId = new JavaScriptSerializer().Deserialize<dynamic>(siteResponse.Content.ReadAsStringAsync().Result)["id"];
+            ' Fix Not Like
+            evalRule = Replace(evalRule, " Not Like ", " <> ")
 
-    // Step 2: Get Document Library (Drive) ID
-    string driveUrl = $"{graphApiUrl}/sites/{siteId}/drives";
-    HttpResponseMessage driveResponse = client.GetAsync(driveUrl).Result;
-    if (!driveResponse.IsSuccessStatusCode)
-    {
-        Console.WriteLine("Error fetching document libraries: " + driveResponse.Content.ReadAsStringAsync().Result);
-        Dts.TaskResult = (int)ScriptResults.Failure;
-        return;
-    }
+            ' Convert "In ()" to multiple OR conditions
+            If InStr(1, evalRule, " In (") > 0 Then
+                evalRule = Replace(evalRule, " In (", " = ")
+                evalRule = Replace(evalRule, ")", "")
+                evalRule = Replace(evalRule, ",", " Or " & wsData.Cells(i, colHeaders(part)).Address(False, False) & " = ")
+            End If
 
-    // Find the correct document library
-    var drives = new JavaScriptSerializer().Deserialize<dynamic>(driveResponse.Content.ReadAsStringAsync().Result)["value"];
-    string driveId = null;
-    foreach (var drive in drives)
-    {
-        if (drive["name"] == documentLibraryName)
-        {
-            driveId = drive["id"];
-            break;
-        }
-    }
+            ' Debugging (Optional - Uncomment to check rule conversion)
+            ' Debug.Print "Row " & i & " Rule Applied: " & evalRule
+            
+            ' Evaluate rule
+            On Error Resume Next
+            If Application.Evaluate(evalRule) Then
+                ' If match found, update Column AC in Sheet1 with Column A from Sheet2
+                wsData.Cells(i, 29).Value = wsRules.Cells(j, 1).Value ' Column AC = 29
+                matchFound = True
+                Exit For ' Stop checking further rules for this row
+            End If
+            On Error GoTo 0
+        Next j
+    Next i
 
-    if (string.IsNullOrEmpty(driveId))
-    {
-        Console.WriteLine($"Error: Document Library '{documentLibraryName}' not found.");
-        Dts.TaskResult = (int)ScriptResults.Failure;
-        return;
-    }
-
-    // Step 3: Upload File to Document Library
-    string uploadUrl = $"{graphApiUrl}/drives/{driveId}/root:/{uploadFileName}:/content";
-    byte[] fileBytes = File.ReadAllBytes(filePath);
-
-    var uploadContent = new ByteArrayContent(fileBytes);
-    uploadContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-
-    HttpResponseMessage uploadResponse = client.PutAsync(uploadUrl, uploadContent).Result;
-
-    if (uploadResponse.IsSuccessStatusCode)
-    {
-        Console.WriteLine("File uploaded successfully");
-        Dts.TaskResult = (int)ScriptResults.Success;
-    }
-    else
-    {
-        Console.WriteLine("Error uploading file: " + uploadResponse.Content.ReadAsStringAsync().Result);
-        Dts.TaskResult = (int)ScriptResults.Failure;
-    }
-}
+    MsgBox "Rules applied successfully!", vbInformation
+End Sub
