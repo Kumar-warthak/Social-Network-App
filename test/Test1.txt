@@ -55,7 +55,7 @@ Sub ApplyDynamicRules()
 
             ' Convert Rule into VBA-compatible format
             evalRule = rule
-            
+
             ' Replace column names dynamically based on the rule
             ruleParts = Split(evalRule, " ")
             For Each part In ruleParts
@@ -71,15 +71,38 @@ Sub ApplyDynamicRules()
                 End If
             Next part
 
-            ' Handle "Not Like" (VBA uses "<>")
+            ' Fix "Not Like" syntax
             evalRule = Replace(evalRule, " Not Like ", " <> ")
 
-            ' Convert "In ()" to multiple OR conditions
+            ' Convert "In (value1, value2)" to multiple OR conditions
             If InStr(1, evalRule, " In (") > 0 Then
-                evalRule = Replace(evalRule, " In (", " = ")
-                evalRule = Replace(evalRule, ")", "")
-                evalRule = Replace(evalRule, ",", " Or " & wsData.Cells(i, colHeaders(part)).Address(False, False) & " = ")
+                Dim inClause As String
+                Dim valuesOnly As String
+                
+                ' Extract values inside In()
+                valuesOnly = Mid(evalRule, InStr(evalRule, " In (") + 5) ' Remove " In ("
+                valuesOnly = Left(valuesOnly, InStr(valuesOnly, ")") - 1) ' Remove closing ")"
+                
+                ' Split values and create OR condition
+                Dim inValues As Variant, inPart As Variant
+                inValues = Split(valuesOnly, ",")
+                inClause = ""
+                
+                For Each inPart In inValues
+                    inClause = inClause & " = " & Trim(inPart) & " Or "
+                Next inPart
+                
+                ' Remove last "Or"
+                If Right(inClause, 4) = " Or " Then
+                    inClause = Left(inClause, Len(inClause) - 4)
+                End If
+                
+                ' Replace In() condition in evalRule
+                evalRule = Replace(evalRule, " In (" & valuesOnly & ")", inClause)
             End If
+
+            ' Debug final evaluated rule before execution
+            Debug.Print "Evaluating: " & evalRule
 
             ' Evaluate rule
             On Error Resume Next
