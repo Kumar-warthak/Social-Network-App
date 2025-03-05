@@ -7,6 +7,7 @@ Sub ApplyDynamicRules()
     Dim colHeaders As Object
     Dim cell As Range, header As String
     Dim ruleParts As Variant, part As Variant
+    Dim value As Variant
 
     ' Set worksheets
     Set wsData = ThisWorkbook.Sheets("Sheet1")
@@ -19,7 +20,7 @@ Sub ApplyDynamicRules()
     ' Create a dictionary to store column names and indexes
     Set colHeaders = CreateObject("Scripting.Dictionary")
     
-    ' Loop through first row (headers) in Sheet1 and store column names
+    ' Store column names from the first row of Sheet1
     For Each cell In wsData.Rows(1).Cells
         If cell.Value <> "" Then
             colHeaders(cell.Value) = cell.Column
@@ -37,15 +38,22 @@ Sub ApplyDynamicRules()
             ' Convert Rule into VBA-compatible format
             evalRule = rule
             
-            ' Replace column names dynamically
+            ' Replace column names dynamically based on the rule
             ruleParts = Split(evalRule, " ")
             For Each part In ruleParts
                 If colHeaders.exists(part) Then
-                    evalRule = Replace(evalRule, part, """" & wsData.Cells(i, colHeaders(part)).Value & """")
+                    value = wsData.Cells(i, colHeaders(part)).Value
+                    
+                    ' Check if value is numeric
+                    If IsNumeric(value) Then
+                        evalRule = Replace(evalRule, part, value) ' No quotes for numbers
+                    Else
+                        evalRule = Replace(evalRule, part, """" & value & """") ' Wrap text in quotes
+                    End If
                 End If
             Next part
 
-            ' Fix Not Like
+            ' Handle "Not Like" (VBA uses "<>")
             evalRule = Replace(evalRule, " Not Like ", " <> ")
 
             ' Convert "In ()" to multiple OR conditions
