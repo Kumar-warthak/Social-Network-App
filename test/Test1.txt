@@ -5,10 +5,11 @@ Sub ApplyDynamicRules()
     Dim rule As String, evalRule As String
     Dim matchFound As Boolean
     Dim colHeaders As Object
-    Dim cell As Range, header As String
+    Dim cell As Range, key As Variant
     Dim ruleParts As Variant, part As Variant
     Dim value As Variant
-
+    Dim msg As String
+    
     ' Set worksheets
     Set wsData = ThisWorkbook.Sheets("Sheet1")
     Set wsRules = ThisWorkbook.Sheets("Sheet2")
@@ -17,9 +18,12 @@ Sub ApplyDynamicRules()
     lastRowData = wsData.Cells(wsData.Rows.Count, 1).End(xlUp).Row
     lastRowRules = wsRules.Cells(wsRules.Rows.Count, 13).End(xlUp).Row ' Column M (13)
 
+    ' Debug lastRowRules
+    MsgBox "Last Rule Row: " & lastRowRules, vbInformation
+
     ' Create a dictionary to store column names and indexes
     Set colHeaders = CreateObject("Scripting.Dictionary")
-    
+
     ' Store column names from the first row of Sheet1
     For Each cell In wsData.Rows(1).Cells
         If cell.Value <> "" Then
@@ -27,14 +31,28 @@ Sub ApplyDynamicRules()
         End If
     Next cell
 
+    ' Debug column headers
+    msg = "Column Mappings in Sheet1:" & vbCrLf & vbCrLf
+    For Each key In colHeaders.keys
+        msg = msg & key & " → Column " & colHeaders(key) & vbCrLf
+    Next key
+    MsgBox msg, vbInformation, "Column Mappings"
+
     ' Loop through each row in Sheet1
     For i = 2 To lastRowData ' Assuming row 1 has headers
         matchFound = False ' Reset match flag
 
         ' Loop through each rule in Sheet2 (Column M)
         For j = 1 To lastRowRules
-            rule = wsRules.Cells(j, 13).Value ' Get rule from Column M
+            ' Debugging: Check if j is changing
+            Debug.Print "Processing Rule Row: " & j & " | Rule: " & wsRules.Cells(j, 13).Value
+
+            ' Get rule from Column M
+            rule = Trim(wsRules.Cells(j, 13).Value)
             
+            ' Skip empty rules
+            If rule = "" Then Exit For
+
             ' Convert Rule into VBA-compatible format
             evalRule = rule
             
@@ -63,9 +81,6 @@ Sub ApplyDynamicRules()
                 evalRule = Replace(evalRule, ",", " Or " & wsData.Cells(i, colHeaders(part)).Address(False, False) & " = ")
             End If
 
-            ' Debugging (Optional - Uncomment to check rule conversion)
-            ' Debug.Print "Row " & i & " Rule Applied: " & evalRule
-            
             ' Evaluate rule
             On Error Resume Next
             If Application.Evaluate(evalRule) Then
