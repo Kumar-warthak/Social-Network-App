@@ -8,7 +8,7 @@ Sub ApplyDynamicRules()
     Dim cell As Range, key As Variant
     Dim ruleParts As Variant, part As Variant
     Dim value As Variant
-    Dim msg As String
+    Dim safeRule As String
     
     ' Set worksheets
     Set wsData = ThisWorkbook.Sheets("Sheet1")
@@ -28,22 +28,12 @@ Sub ApplyDynamicRules()
         End If
     Next cell
 
-    ' Debug column mappings
-    msg = "Column Mappings in Sheet1:" & vbCrLf & vbCrLf
-    For Each key In colHeaders.keys
-        msg = msg & key & " → Column " & colHeaders(key) & vbCrLf
-    Next key
-    MsgBox msg, vbInformation, "Column Mappings"
-
     ' Loop through each row in Sheet1
     For i = 2 To lastRowData ' Assuming row 1 has headers
         matchFound = False ' Reset match flag
 
         ' Loop through each rule in Sheet2 (Column M)
         For j = 1 To lastRowRules
-            ' Debugging: Check if j is changing
-            Debug.Print "Processing Rule Row: " & j & " | Rule: " & wsRules.Cells(j, 13).Value
-
             ' Get rule from Column M
             rule = Trim(wsRules.Cells(j, 13).Value)
             
@@ -61,7 +51,7 @@ Sub ApplyDynamicRules()
                 If colHeaders.exists(part) Then
                     value = wsData.Cells(i, colHeaders(part)).Value
                     
-                    ' Replace column name + operator to avoid incorrect replacements
+                    ' Handle text vs. number types correctly
                     If IsNumeric(value) Then
                         evalRule = Replace(evalRule, part & "=", part & "=" & value) ' No quotes for numbers
                     Else
@@ -73,9 +63,13 @@ Sub ApplyDynamicRules()
             ' Debug final evaluated rule before execution
             Debug.Print "Evaluating: " & evalRule
 
-            ' Evaluate rule safely
+            ' Validate rule format before evaluating
+            safeRule = Replace(evalRule, " And ", " AND ")
+            safeRule = Replace(safeRule, " Or ", " OR ")
+
+            ' Try evaluation safely
             On Error Resume Next
-            If Application.Evaluate(evalRule) Then
+            If Application.Evaluate(safeRule) Then
                 ' If match found, update Column AC in Sheet1 with Column A from Sheet2
                 wsData.Cells(i, 29).Value = wsRules.Cells(j, 1).Value ' Column AC = 29
                 matchFound = True
