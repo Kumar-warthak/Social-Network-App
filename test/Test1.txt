@@ -8,7 +8,9 @@ Sub ApplyDynamicRules()
     Dim cell As Range, key As Variant
     Dim ruleParts As Variant, part As Variant
     Dim value As Variant
-    Dim safeRule As String
+    Dim conditionParts As Variant
+    Dim columnName As String, operatorPart As String, valuePart As String
+    Dim ruleMatch As Boolean
     
     ' Set worksheets
     Set wsData = ThisWorkbook.Sheets("Sheet1")
@@ -40,42 +42,79 @@ Sub ApplyDynamicRules()
             ' Skip empty rules
             If rule = "" Then Exit For
 
-            ' Start evalRule as the base rule
-            evalRule = rule
-
-            ' Split rule into parts (words)
-            ruleParts = Split(evalRule, " ")
+            ' Start with ruleMatch = True, and set to False if any condition fails
+            ruleMatch = True
             
-            ' Process each part of the rule
-            For Each part In ruleParts
-                If colHeaders.exists(part) Then
-                    value = wsData.Cells(i, colHeaders(part)).Value
-                    
-                    ' Handle text vs. number types correctly
-                    If IsNumeric(value) Then
-                        evalRule = Replace(evalRule, part & "=", part & "=" & value) ' No quotes for numbers
-                    Else
-                        evalRule = Replace(evalRule, part & "=", part & "=""" & value & """") ' Wrap text in quotes
-                    End If
+            ' Split rule into conditions (assuming "AND" separates conditions)
+            conditionParts = Split(rule, " And ")
+            
+            ' Check each condition
+            For Each part In conditionParts
+                ' Extract column name, operator, and value
+                If InStr(part, "=") > 0 Then
+                    operatorPart = "="
+                ElseIf InStr(part, "<>") > 0 Then
+                    operatorPart = "<>"
+                ElseIf InStr(part, " Like ") > 0 Then
+                    operatorPart = " Like "
+                ElseIf InStr(part, " IN ") > 0 Then
+                    operatorPart = " IN "
+                Else
+                    ruleMatch = False ' Invalid condition format
+                    Exit For
                 End If
+
+                ' Extract column name
+                columnName = Trim(Left(part, InStr(part, operatorPart) - 1))
+                valuePart = Trim(Right(part, Len(part) - InStr(part, operatorPart) - Len(operatorPart) + 1))
+
+                ' Get actual value from Sheet1
+                If colHeaders.exists(columnName) Then
+                    value = wsData.Cells(i, colHeaders(columnName)).Value
+                Else
+                    ruleMatch = False ' Column not found
+                    Exit For
+                End If
+
+                ' Convert numeric values correctly
+                If IsNumeric(value) Then
+                    valuePart = Replace(valuePart, """", "") ' Remove extra quotes for numbers
+                End If
+
+                ' Apply comparison based on operator
+                Select Case operatorPart
+                    Case "="
+                        If value <> valuePart Then ruleMatch = False
+                    Case "<>"
+                        If value = valuePart Then ruleMatch = False
+                    Case " Like "
+                        If value Like Replace(valuePart, """", "") = False Then ruleMatch = False
+                    Case " IN "
+                        ' Extract multiple values from IN clause and check if value exists
+                        valuePart = Replace(valuePart, "(", "")
+                        valuePart = Replace(valuePart, ")", "")
+                        Dim valuesArray As Variant
+                        valuesArray = Split(valuePart, ",")
+                        ruleMatch = False
+                        Dim k As Integer
+                        For k = LBound(valuesArray) To UBound(valuesArray)
+                            If Trim(value) = Trim(Replace(valuesArray(k), """", "")) Then
+                                ruleMatch = True
+                                Exit For
+                            End If
+                        Next k
+                End Select
+
+                ' If any condition fails, break
+                If ruleMatch = False Then Exit For
             Next part
-
-            ' Debug final evaluated rule before execution
-            Debug.Print "Evaluating: " & evalRule
-
-            ' Validate rule format before evaluating
-            safeRule = Replace(evalRule, " And ", " AND ")
-            safeRule = Replace(safeRule, " Or ", " OR ")
-
-            ' Try evaluation safely
-            On Error Resume Next
-            If Application.Evaluate(safeRule) Then
-                ' If match found, update Column AC in Sheet1 with Column A from Sheet2
+            
+            ' If all conditions match, update AC column in Sheet1
+            If ruleMatch Then
                 wsData.Cells(i, 29).Value = wsRules.Cells(j, 1).Value ' Column AC = 29
                 matchFound = True
                 Exit For ' Stop checking further rules for this row
             End If
-            On Error GoTo 0
         Next j
     Next i
 
