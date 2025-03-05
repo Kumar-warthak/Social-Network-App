@@ -18,9 +18,6 @@ Sub ApplyDynamicRules()
     lastRowData = wsData.Cells(wsData.Rows.Count, 1).End(xlUp).Row
     lastRowRules = wsRules.Cells(wsRules.Rows.Count, 13).End(xlUp).Row ' Column M (13)
 
-    ' Debug lastRowRules
-    MsgBox "Last Rule Row: " & lastRowRules, vbInformation
-
     ' Create a dictionary to store column names and indexes
     Set colHeaders = CreateObject("Scripting.Dictionary")
 
@@ -31,7 +28,7 @@ Sub ApplyDynamicRules()
         End If
     Next cell
 
-    ' Debug column headers
+    ' Debug column mappings
     msg = "Column Mappings in Sheet1:" & vbCrLf & vbCrLf
     For Each key In colHeaders.keys
         msg = msg & key & " → Column " & colHeaders(key) & vbCrLf
@@ -53,58 +50,30 @@ Sub ApplyDynamicRules()
             ' Skip empty rules
             If rule = "" Then Exit For
 
-            ' Convert Rule into VBA-compatible format
+            ' Start evalRule as the base rule
             evalRule = rule
 
-            ' Replace column names dynamically based on the rule
+            ' Split rule into parts (words)
             ruleParts = Split(evalRule, " ")
+            
+            ' Process each part of the rule
             For Each part In ruleParts
                 If colHeaders.exists(part) Then
                     value = wsData.Cells(i, colHeaders(part)).Value
                     
-                    ' Check if value is numeric
+                    ' Replace column name + operator to avoid incorrect replacements
                     If IsNumeric(value) Then
-                        evalRule = Replace(evalRule, part, value) ' No quotes for numbers
+                        evalRule = Replace(evalRule, part & "=", part & "=" & value) ' No quotes for numbers
                     Else
-                        evalRule = Replace(evalRule, part, """" & value & """") ' Wrap text in quotes
+                        evalRule = Replace(evalRule, part & "=", part & "=""" & value & """") ' Wrap text in quotes
                     End If
                 End If
             Next part
 
-            ' Fix "Not Like" syntax
-            evalRule = Replace(evalRule, " Not Like ", " <> ")
-
-            ' Convert "In (value1, value2)" to multiple OR conditions
-            If InStr(1, evalRule, " In (") > 0 Then
-                Dim inClause As String
-                Dim valuesOnly As String
-                
-                ' Extract values inside In()
-                valuesOnly = Mid(evalRule, InStr(evalRule, " In (") + 5) ' Remove " In ("
-                valuesOnly = Left(valuesOnly, InStr(valuesOnly, ")") - 1) ' Remove closing ")"
-                
-                ' Split values and create OR condition
-                Dim inValues As Variant, inPart As Variant
-                inValues = Split(valuesOnly, ",")
-                inClause = ""
-                
-                For Each inPart In inValues
-                    inClause = inClause & " = " & Trim(inPart) & " Or "
-                Next inPart
-                
-                ' Remove last "Or"
-                If Right(inClause, 4) = " Or " Then
-                    inClause = Left(inClause, Len(inClause) - 4)
-                End If
-                
-                ' Replace In() condition in evalRule
-                evalRule = Replace(evalRule, " In (" & valuesOnly & ")", inClause)
-            End If
-
             ' Debug final evaluated rule before execution
             Debug.Print "Evaluating: " & evalRule
 
-            ' Evaluate rule
+            ' Evaluate rule safely
             On Error Resume Next
             If Application.Evaluate(evalRule) Then
                 ' If match found, update Column AC in Sheet1 with Column A from Sheet2
