@@ -1,122 +1,36 @@
-Sub ApplyDynamicRules()
-    Dim wsData As Worksheet, wsRules As Worksheet
-    Dim lastRowData As Long, lastRowRules As Long
-    Dim i As Long, j As Long
-    Dim rule As String, evalRule As String
-    Dim matchFound As Boolean
-    Dim colHeaders As Object
-    Dim cell As Range, key As Variant
-    Dim ruleParts As Variant, part As Variant
-    Dim value As Variant
-    Dim conditionParts As Variant
-    Dim columnName As String, operatorPart As String, valuePart As String
-    Dim ruleMatch As Boolean
-    
-    ' Set worksheets
-    Set wsData = ThisWorkbook.Sheets("Sheet1")
-    Set wsRules = ThisWorkbook.Sheets("Sheet2")
+import os
+import time
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 
-    ' Get last row of data and rules
-    lastRowData = wsData.Cells(wsData.Rows.Count, 1).End(xlUp).Row
-    lastRowRules = wsRules.Cells(wsRules.Rows.Count, 13).End(xlUp).Row ' Column M (13)
+# === Configuration ===
+chrome_driver_path = "/path/to/chromedriver"  # Replace with the actual path to chromedriver
+download_dir = "/path/to/download/folder"     # Replace with your desired download folder
 
-    ' Create a dictionary to store column names and indexes
-    Set colHeaders = CreateObject("Scripting.Dictionary")
+# === Chrome Options ===
+chrome_options = Options()
+chrome_options.add_experimental_option("prefs", {
+    "download.default_directory": download_dir,
+    "download.prompt_for_download": False,
+    "directory_upgrade": True,
+    "safebrowsing.enabled": True
+})
 
-    ' Store column names from the first row of Sheet1
-    For Each cell In wsData.Rows(1).Cells
-        If cell.Value <> "" Then
-            colHeaders(cell.Value) = cell.Column
-        End If
-    Next cell
+# === Start WebDriver ===
+service = Service(executable_path=chrome_driver_path)
+driver = webdriver.Chrome(service=service, options=chrome_options)
 
-    ' Loop through each row in Sheet1
-    For i = 2 To lastRowData ' Assuming row 1 has headers
-        matchFound = False ' Reset match flag
+# === Open the Website and Download the File ===
+driver.get("https://example.com/file-to-download")  # Replace with actual URL
 
-        ' Loop through each rule in Sheet2 (Column M)
-        For j = 1 To lastRowRules
-            ' Get rule from Column M
-            rule = Trim(wsRules.Cells(j, 13).Value)
-            
-            ' Skip empty rules
-            If rule = "" Then Exit For
+# Example: click a link or button to download the file
+download_button = driver.find_element(By.XPATH, '//a[@href="file-to-download.pdf"]')  # Update selector
+download_button.click()
 
-            ' Start with ruleMatch = True, and set to False if any condition fails
-            ruleMatch = True
-            
-            ' Split rule into conditions (assuming "AND" separates conditions)
-            conditionParts = Split(rule, " And ")
-            
-            ' Check each condition
-            For Each part In conditionParts
-                ' Extract column name, operator, and value
-                If InStr(part, "=") > 0 Then
-                    operatorPart = "="
-                ElseIf InStr(part, "<>") > 0 Then
-                    operatorPart = "<>"
-                ElseIf InStr(part, " Like ") > 0 Then
-                    operatorPart = " Like "
-                ElseIf InStr(part, " IN ") > 0 Then
-                    operatorPart = " IN "
-                Else
-                    ruleMatch = False ' Invalid condition format
-                    Exit For
-                End If
+# === Wait for Download to Complete ===
+time.sleep(5)  # Adjust time based on file size
 
-                ' Extract column name
-                columnName = Trim(Left(part, InStr(part, operatorPart) - 1))
-                valuePart = Trim(Right(part, Len(part) - InStr(part, operatorPart) - Len(operatorPart) + 1))
-
-                ' Get actual value from Sheet1
-                If colHeaders.exists(columnName) Then
-                    value = wsData.Cells(i, colHeaders(columnName)).Value
-                Else
-                    ruleMatch = False ' Column not found
-                    Exit For
-                End If
-
-                ' Convert numeric values correctly
-                If IsNumeric(value) Then
-                    valuePart = Replace(valuePart, """", "") ' Remove extra quotes for numbers
-                End If
-
-                ' Apply comparison based on operator
-                Select Case operatorPart
-                    Case "="
-                        If value <> valuePart Then ruleMatch = False
-                    Case "<>"
-                        If value = valuePart Then ruleMatch = False
-                    Case " Like "
-                        If value Like Replace(valuePart, """", "") = False Then ruleMatch = False
-                    Case " IN "
-                        ' Extract multiple values from IN clause and check if value exists
-                        valuePart = Replace(valuePart, "(", "")
-                        valuePart = Replace(valuePart, ")", "")
-                        Dim valuesArray As Variant
-                        valuesArray = Split(valuePart, ",")
-                        ruleMatch = False
-                        Dim k As Integer
-                        For k = LBound(valuesArray) To UBound(valuesArray)
-                            If Trim(value) = Trim(Replace(valuesArray(k), """", "")) Then
-                                ruleMatch = True
-                                Exit For
-                            End If
-                        Next k
-                End Select
-
-                ' If any condition fails, break
-                If ruleMatch = False Then Exit For
-            Next part
-            
-            ' If all conditions match, update AC column in Sheet1
-            If ruleMatch Then
-                wsData.Cells(i, 29).Value = wsRules.Cells(j, 1).Value ' Column AC = 29
-                matchFound = True
-                Exit For ' Stop checking further rules for this row
-            End If
-        Next j
-    Next i
-
-    MsgBox "Rules applied successfully!", vbInformation
-End Sub
+# === Close the Browser ===
+driver.quit()
