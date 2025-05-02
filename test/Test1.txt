@@ -5,15 +5,14 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-using Microsoft.SqlServer.Dts.Runtime;
 
 public void Main()
 {
+    // Configurations
     string tenantId = "your-tenant-id";
     string clientId = "your-client-id";
     string clientSecret = "your-client-secret";
-    string siteName = "yoursite.sharepoint.com:/sites/yoursite";
+    string siteName = "your-tenant.sharepoint.com:/sites/yoursite";
     string listName = "your-list-name";
     string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
     string storedProc = "YourInsertListItemProc";
@@ -36,14 +35,17 @@ string GetAccessToken(string tenantId, string clientId, string clientSecret)
 {
     using (var client = new HttpClient())
     {
-        var content = new StringContent(
+        var body = new StringContent(
             $"client_id={clientId}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret={clientSecret}&grant_type=client_credentials",
             Encoding.UTF8, "application/x-www-form-urlencoded");
 
-        var response = client.PostAsync($"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token", content).Result;
-        var json = response.Content.ReadAsStringAsync().Result;
-        var doc = JsonDocument.Parse(json);
-        return doc.RootElement.GetProperty("access_token").GetString();
+        var response = client.PostAsync($"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token", body).Result;
+        string json = response.Content.ReadAsStringAsync().Result;
+
+        using (JsonDocument doc = JsonDocument.Parse(json))
+        {
+            return doc.RootElement.GetProperty("access_token").GetString();
+        }
     }
 }
 
@@ -53,9 +55,12 @@ string GetSiteId(string token, string siteName)
     {
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         string url = $"https://graph.microsoft.com/v1.0/sites/{siteName}";
-        var response = client.GetStringAsync(url).Result;
-        var doc = JsonDocument.Parse(response);
-        return doc.RootElement.GetProperty("id").GetString();
+        string response = client.GetStringAsync(url).Result;
+
+        using (JsonDocument doc = JsonDocument.Parse(response))
+        {
+            return doc.RootElement.GetProperty("id").GetString();
+        }
     }
 }
 
@@ -71,22 +76,29 @@ void FetchAndInsertListItems(string siteId, string token, string listName, strin
 
         while (!string.IsNullOrEmpty(nextLink))
         {
-            var response = client.GetStringAsync(nextLink).Result;
-            var root = JsonNode.Parse(response).AsObject();
+            string response = client.GetStringAsync(nextLink).Result;
 
-            foreach (var item in root["value"].AsArray())
+            using (JsonDocument doc = JsonDocument.Parse(response))
             {
-                string itemJson = item["fields"].ToJsonString();
+                var root = doc.RootElement;
 
-                using (var cmd = new SqlCommand(storedProc, conn))
+                foreach (var item in root.GetProperty("value").EnumerateArray())
                 {
-                    cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.Parameters.AddWithValue("@ItemJson", itemJson);
-                    cmd.ExecuteNonQuery();
-                }
-            }
+                    string itemJson = item.GetProperty("fields").GetRawText();
 
-            nextLink = root.ContainsKey("@odata.nextLink") ? root["@odata.nextLink"]?.ToString() : null;
+                    using (var cmd = new SqlCommand(storedProc, conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@ItemJson", itemJson);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                if (root.TryGetProperty("@odata.nextLink", out JsonElement nextLinkElement))
+                    nextLink = nextLinkElement.GetString();
+                else
+                    nextLink = null;
+            }
         }
     }
 }
