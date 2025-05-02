@@ -3,16 +3,17 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
-using Microsoft.Identity.Client;
-using Newtonsoft.Json.Linq;
 
 class Program
 {
     static string tenantId = "your-tenant-id";
     static string clientId = "your-client-id";
     static string clientSecret = "your-client-secret";
-    static string siteName = "your-site-name"; // e.g., yoursite.sharepoint.com:/sites/yoursite
+    static string siteName = "your-site-name"; // yoursite.sharepoint.com:/sites/yoursite
     static string listName = "your-list-name";
     static string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
     static string storedProc = "YourInsertListItemProc";
@@ -21,35 +22,37 @@ class Program
     {
         string token = await GetAccessToken();
         string siteId = await GetSiteId(token);
-        await FetchAndInsertListItems(siteId, listName, token);
+        await FetchAndInsertListItems(siteId, token);
     }
 
     static async Task<string> GetAccessToken()
     {
-        var app = ConfidentialClientApplicationBuilder
-            .Create(clientId)
-            .WithClientSecret(clientSecret)
-            .WithAuthority(new Uri($"https://login.microsoftonline.com/{tenantId}"))
-            .Build();
+        using HttpClient client = new HttpClient();
+        var body = new StringContent(
+            $"client_id={clientId}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret={clientSecret}&grant_type=client_credentials",
+            Encoding.UTF8, "application/x-www-form-urlencoded");
 
-        var result = await app.AcquireTokenForClient(new[] { "https://graph.microsoft.com/.default" }).ExecuteAsync();
-        return result.AccessToken;
+        var result = await client.PostAsync($"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token", body);
+        var json = await result.Content.ReadAsStringAsync();
+
+        var doc = JsonDocument.Parse(json);
+        return doc.RootElement.GetProperty("access_token").GetString();
     }
 
     static async Task<string> GetSiteId(string token)
     {
-        using var client = new HttpClient();
+        using HttpClient client = new HttpClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
         string url = $"https://graph.microsoft.com/v1.0/sites/{siteName}";
         var response = await client.GetStringAsync(url);
-        dynamic json = JObject.Parse(response);
-        return json.id;
+        var doc = JsonDocument.Parse(response);
+        return doc.RootElement.GetProperty("id").GetString();
     }
 
-    static async Task FetchAndInsertListItems(string siteId, string listName, string token)
+    static async Task FetchAndInsertListItems(string siteId, string token)
     {
-        string baseUrl = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
-        string nextLink = baseUrl;
+        string nextLink = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
 
         using HttpClient client = new HttpClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -60,12 +63,11 @@ class Program
         while (!string.IsNullOrEmpty(nextLink))
         {
             var response = await client.GetStringAsync(nextLink);
-            JObject result = JObject.Parse(response);
+            var root = JsonNode.Parse(response).AsObject();
 
-            var items = result["value"];
-            foreach (var item in items)
+            foreach (var item in root["value"].AsArray())
             {
-                string itemJson = item["fields"].ToString();
+                string itemJson = item["fields"].ToJsonString();
                 using SqlCommand cmd = new SqlCommand(storedProc, conn)
                 {
                     CommandType = CommandType.StoredProcedure
@@ -74,7 +76,7 @@ class Program
                 cmd.ExecuteNonQuery();
             }
 
-            nextLink = result.ContainsKey("@odata.nextLink") ? result["@odata.nextLink"]?.ToString() : null;
+            nextLink = root.ContainsKey("@odata.nextLink") ? root["@odata.nextLink"]?.ToString() : null;
         }
     }
 }
