@@ -1,87 +1,47 @@
-using System;
-using System.IO;
-using System.Text;
+import requests
+import msal
 
-public void Main()
-{
-    // Specify the path of your CSV file
-    string csvFilePath = Dts.Variables["User::CsvFilePath"].Value.ToString();
-    
-    // Read all lines from the CSV file
-    string[] lines = File.ReadAllLines(csvFilePath);
+# Step 1: App Credentials
+tenant_id = "YOUR_TENANT_ID"
+client_id = "YOUR_CLIENT_ID"
+client_secret = "YOUR_CLIENT_SECRET"
+authority = f"https://login.microsoftonline.com/{tenant_id}"
+scope = ["https://graph.microsoft.com/.default"]
 
-    // Create a StringBuilder to store the new CSV content with split columns
-    StringBuilder newCsvContent = new StringBuilder();
+# Step 2: SharePoint Site Info
+site_hostname = "contoso.sharepoint.com"
+site_path = "/sites/TestSite"  # change as needed
 
-    // Set the index of the column that needs to be split
-    int targetColumnIndex = 2; // For example, if the third column needs to be split
-    
-    // Variable to store the maximum number of new columns based on the data
-    int maxSplitColumns = 0;
+# Step 3: Get access token
+app = msal.ConfidentialClientApplication(
+    client_id, authority=authority, client_credential=client_secret
+)
+token_response = app.acquire_token_for_client(scopes=scope)
+access_token = token_response.get("access_token")
 
-    // Process the CSV file line by line
-    for (int i = 0; i < lines.Length; i++)
-    {
-        string line = lines[i];
-        
-        // Split the line by commas to get the individual columns
-        string[] columns = line.Split(',');
+if not access_token:
+    raise Exception("Could not acquire token")
 
-        if (i == 0)
-        {
-            // For the header row, keep the original headers
-            newCsvContent.Append(string.Join(",", columns));
-
-            // Calculate the maximum number of new columns dynamically in the next loop
-        }
-        else
-        {
-            // Split the target column (e.g., the third column) by semicolon
-            string[] splitValues = columns[targetColumnIndex].Split(';'); // Adjust based on actual delimiter
-
-            // Update maxSplitColumns based on the number of split values in the current row
-            maxSplitColumns = Math.Max(maxSplitColumns, splitValues.Length);
-
-            // Add the original columns
-            newCsvContent.Append(string.Join(",", columns[0], columns[1]));
-
-            // Dynamically append the split values (add empty strings for missing values)
-            for (int j = 0; j < splitValues.Length; j++)
-            {
-                newCsvContent.Append("," + splitValues[j].Trim());
-            }
-
-            // Fill with empty columns if splitValues has fewer elements than maxSplitColumns
-            for (int j = splitValues.Length; j < maxSplitColumns; j++)
-            {
-                newCsvContent.Append(",");
-            }
-        }
-
-        // Add a newline at the end of the row
-        newCsvContent.AppendLine();
-    }
-
-    // Now go back and generate the header row with the correct number of new columns
-    // Insert new dynamic column headers into the first row
-    string[] originalHeaderColumns = lines[0].Split(',');
-
-    // Generate new headers for the split columns
-    newCsvContent.Insert(0, string.Join(",", originalHeaderColumns[0], originalHeaderColumns[1]));
-
-    for (int j = 1; j <= maxSplitColumns; j++)
-    {
-        newCsvContent.Insert(newCsvContent.Length - newCsvContent.ToString().Length, ",NewColumn" + j);
-    }
-    newCsvContent.AppendLine();
-
-    // Write the new content to a new CSV file (or overwrite the existing one)
-    string newCsvFilePath = Path.Combine(Path.GetDirectoryName(csvFilePath), "Processed_" + Path.GetFileName(csvFilePath));
-    File.WriteAllText(newCsvFilePath, newCsvContent.ToString());
-
-    // Optionally, output the path of the new file to SSIS
-    Dts.Variables["User::NewCsvFilePath"].Value = newCsvFilePath;
-
-    // Indicate success
-    Dts.TaskResult = (int)ScriptResults.Success;
+headers = {
+    "Authorization": f"Bearer {access_token}",
+    "Accept": "application/json"
 }
+
+# Step 4: Get site ID
+site_url = f"https://graph.microsoft.com/v1.0/sites/{site_hostname}:{site_path}"
+site_resp = requests.get(site_url, headers=headers).json()
+site_id = site_resp["id"]
+
+# Step 5: Get all lists (with pagination support)
+lists = []
+next_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists?$top=100"
+
+while next_url:
+    resp = requests.get(next_url, headers=headers).json()
+    lists.extend(resp.get("value", []))
+    next_url = resp.get("@odata.nextLink")
+
+# Step 6: Display list names
+print(f"Total lists found: {len(lists)}")
+for lst in lists:
+    print(f"- {lst['name']} (ID: {lst['id']})")
