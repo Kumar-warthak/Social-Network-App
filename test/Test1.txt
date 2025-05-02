@@ -1,36 +1,80 @@
-import os
-import time
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
+using System;
+using System.Data;
+using System.Data.SqlClient;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Threading.Tasks;
+using Microsoft.Identity.Client;
+using Newtonsoft.Json.Linq;
 
-# === Configuration ===
-chrome_driver_path = "/path/to/chromedriver"  # Replace with the actual path to chromedriver
-download_dir = "/path/to/download/folder"     # Replace with your desired download folder
+class Program
+{
+    static string tenantId = "your-tenant-id";
+    static string clientId = "your-client-id";
+    static string clientSecret = "your-client-secret";
+    static string siteName = "your-site-name"; // e.g., yoursite.sharepoint.com:/sites/yoursite
+    static string listName = "your-list-name";
+    static string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
+    static string storedProc = "YourInsertListItemProc";
 
-# === Chrome Options ===
-chrome_options = Options()
-chrome_options.add_experimental_option("prefs", {
-    "download.default_directory": download_dir,
-    "download.prompt_for_download": False,
-    "directory_upgrade": True,
-    "safebrowsing.enabled": True
-})
+    static async Task Main()
+    {
+        string token = await GetAccessToken();
+        string siteId = await GetSiteId(token);
+        await FetchAndInsertListItems(siteId, listName, token);
+    }
 
-# === Start WebDriver ===
-service = Service(executable_path=chrome_driver_path)
-driver = webdriver.Chrome(service=service, options=chrome_options)
+    static async Task<string> GetAccessToken()
+    {
+        var app = ConfidentialClientApplicationBuilder
+            .Create(clientId)
+            .WithClientSecret(clientSecret)
+            .WithAuthority(new Uri($"https://login.microsoftonline.com/{tenantId}"))
+            .Build();
 
-# === Open the Website and Download the File ===
-driver.get("https://example.com/file-to-download")  # Replace with actual URL
+        var result = await app.AcquireTokenForClient(new[] { "https://graph.microsoft.com/.default" }).ExecuteAsync();
+        return result.AccessToken;
+    }
 
-# Example: click a link or button to download the file
-download_button = driver.find_element(By.XPATH, '//a[@href="file-to-download.pdf"]')  # Update selector
-download_button.click()
+    static async Task<string> GetSiteId(string token)
+    {
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        string url = $"https://graph.microsoft.com/v1.0/sites/{siteName}";
+        var response = await client.GetStringAsync(url);
+        dynamic json = JObject.Parse(response);
+        return json.id;
+    }
 
-# === Wait for Download to Complete ===
-time.sleep(5)  # Adjust time based on file size
+    static async Task FetchAndInsertListItems(string siteId, string listName, string token)
+    {
+        string baseUrl = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
+        string nextLink = baseUrl;
 
-# === Close the Browser ===
-driver.quit()
+        using HttpClient client = new HttpClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using SqlConnection conn = new SqlConnection(sqlConnString);
+        conn.Open();
+
+        while (!string.IsNullOrEmpty(nextLink))
+        {
+            var response = await client.GetStringAsync(nextLink);
+            JObject result = JObject.Parse(response);
+
+            var items = result["value"];
+            foreach (var item in items)
+            {
+                string itemJson = item["fields"].ToString();
+                using SqlCommand cmd = new SqlCommand(storedProc, conn)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+                cmd.Parameters.AddWithValue("@ItemJson", itemJson);
+                cmd.ExecuteNonQuery();
+            }
+
+            nextLink = result.ContainsKey("@odata.nextLink") ? result["@odata.nextLink"]?.ToString() : null;
+        }
+    }
+}
