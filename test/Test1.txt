@@ -1,92 +1,76 @@
 using System;
-using System.Data;
-using System.Data.SqlClient;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
+using System.Collections.Generic;
+using System.Web.Script.Serialization;
+using System.Data.SqlClient;
+using System.Data;
 
 public void Main()
 {
-    // Configurations
-    string tenantId = "your-tenant-id";
-    string clientId = "your-client-id";
-    string clientSecret = "your-client-secret";
-    string siteName = "your-tenant.sharepoint.com:/sites/yoursite";
-    string listName = "your-list-name";
-    string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
-    string storedProc = "YourInsertListItemProc";
-
     try
     {
-        string token = GetAccessToken(tenantId, clientId, clientSecret);
-        string siteId = GetSiteId(token, siteName);
-        FetchAndInsertListItems(siteId, token, listName, sqlConnString, storedProc);
-        Dts.TaskResult = (int)ScriptResults.Success;
-    }
-    catch (Exception ex)
-    {
-        Dts.Events.FireError(0, "Script Task", ex.Message, "", 0);
-        Dts.TaskResult = (int)ScriptResults.Failure;
-    }
-}
+        // Azure AD & SharePoint Config
+        string clientId = "your-client-id";
+        string clientSecret = "your-client-secret";
+        string tenantId = "your-tenant-id";
+        string tenantDomain = "yourcompany.sharepoint.com";
+        string siteName = "YourSiteName"; // e.g., "HRPortal"
+        string listName = "YourListName"; // e.g., "EmployeeDetails"
+        string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
+        string storedProc = "YourInsertListItemProc";
 
-string GetAccessToken(string tenantId, string clientId, string clientSecret)
-{
-    using (var client = new HttpClient())
-    {
-        var body = new StringContent(
-            $"client_id={clientId}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret={clientSecret}&grant_type=client_credentials",
-            Encoding.UTF8, "application/x-www-form-urlencoded");
+        string graphApiUrl = "https://graph.microsoft.com/v1.0";
+        string authority = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
 
-        var response = client.PostAsync($"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token", body).Result;
-        string json = response.Content.ReadAsStringAsync().Result;
+        HttpClient client = new HttpClient();
 
-        using (JsonDocument doc = JsonDocument.Parse(json))
+        // Get access token
+        var tokenContent = new FormUrlEncodedContent(new[]
         {
-            return doc.RootElement.GetProperty("access_token").GetString();
+            new KeyValuePair<string, string>("grant_type", "client_credentials"),
+            new KeyValuePair<string, string>("client_id", clientId),
+            new KeyValuePair<string, string>("client_secret", clientSecret),
+            new KeyValuePair<string, string>("scope", "https://graph.microsoft.com/.default")
+        });
+
+        var tokenResponse = client.PostAsync(authority, tokenContent).Result;
+        if (!tokenResponse.IsSuccessStatusCode)
+        {
+            Dts.Events.FireError(0, "Token Error", tokenResponse.Content.ReadAsStringAsync().Result, "", 0);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+            return;
         }
-    }
-}
 
-string GetSiteId(string token, string siteName)
-{
-    using (var client = new HttpClient())
-    {
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        string url = $"https://graph.microsoft.com/v1.0/sites/{siteName}";
-        string response = client.GetStringAsync(url).Result;
+        string accessToken = new JavaScriptSerializer().Deserialize<dynamic>(tokenResponse.Content.ReadAsStringAsync().Result)["access_token"];
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-        using (JsonDocument doc = JsonDocument.Parse(response))
+        // Get Site ID
+        string siteUrl = $"{graphApiUrl}/sites/{tenantDomain}:/sites/{siteName}?$select=id";
+        var siteResponse = client.GetAsync(siteUrl).Result;
+        string siteId = new JavaScriptSerializer().Deserialize<dynamic>(siteResponse.Content.ReadAsStringAsync().Result)["id"];
+
+        // Fetch List Items with Paging
+        string listItemsUrl = $"{graphApiUrl}/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
+        var js = new JavaScriptSerializer();
+        using (SqlConnection conn = new SqlConnection(sqlConnString))
         {
-            return doc.RootElement.GetProperty("id").GetString();
-        }
-    }
-}
+            conn.Open();
 
-void FetchAndInsertListItems(string siteId, string token, string listName, string sqlConnString, string storedProc)
-{
-    string nextLink = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
-
-    using (var client = new HttpClient())
-    using (var conn = new SqlConnection(sqlConnString))
-    {
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        conn.Open();
-
-        while (!string.IsNullOrEmpty(nextLink))
-        {
-            string response = client.GetStringAsync(nextLink).Result;
-
-            using (JsonDocument doc = JsonDocument.Parse(response))
+            while (!string.IsNullOrEmpty(listItemsUrl))
             {
-                var root = doc.RootElement;
+                var listResp = client.GetAsync(listItemsUrl).Result;
+                var json = listResp.Content.ReadAsStringAsync().Result;
+                var parsed = js.Deserialize<Dictionary<string, object>>(json);
+                var items = (object[])((Dictionary<string, object>)parsed)["value"];
 
-                foreach (var item in root.GetProperty("value").EnumerateArray())
+                foreach (Dictionary<string, object> item in items)
                 {
-                    string itemJson = item.GetProperty("fields").GetRawText();
+                    Dictionary<string, object> fields = (Dictionary<string, object>)item["fields"];
+                    string itemJson = js.Serialize(fields);
 
-                    using (var cmd = new SqlCommand(storedProc, conn))
+                    // Insert into SQL Server
+                    using (SqlCommand cmd = new SqlCommand(storedProc, conn))
                     {
                         cmd.CommandType = CommandType.StoredProcedure;
                         cmd.Parameters.AddWithValue("@ItemJson", itemJson);
@@ -94,11 +78,19 @@ void FetchAndInsertListItems(string siteId, string token, string listName, strin
                     }
                 }
 
-                if (root.TryGetProperty("@odata.nextLink", out JsonElement nextLinkElement))
-                    nextLink = nextLinkElement.GetString();
+                // Get next page
+                if (parsed.ContainsKey("@odata.nextLink"))
+                    listItemsUrl = parsed["@odata.nextLink"].ToString();
                 else
-                    nextLink = null;
+                    listItemsUrl = null;
             }
         }
+
+        Dts.TaskResult = (int)ScriptResults.Success;
+    }
+    catch (Exception ex)
+    {
+        Dts.Events.FireError(0, "Script Task Error", ex.ToString(), "", 0);
+        Dts.TaskResult = (int)ScriptResults.Failure;
     }
 }
