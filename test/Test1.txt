@@ -1,31 +1,31 @@
 using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.IO;
 using System.Collections.Generic;
 using System.Web.Script.Serialization;
-using System.Data.SqlClient;
-using System.Data;
 
 public void Main()
 {
     try
     {
-        // Azure AD & SharePoint Config
+        // Azure AD credentials and SharePoint settings
         string clientId = "your-client-id";
         string clientSecret = "your-client-secret";
         string tenantId = "your-tenant-id";
         string tenantDomain = "yourcompany.sharepoint.com";
-        string siteName = "YourSiteName"; // e.g., "HRPortal"
-        string listName = "YourListName"; // e.g., "EmployeeDetails"
-        string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
-        string storedProc = "YourInsertListItemProc";
-
-        string graphApiUrl = "https://graph.microsoft.com/v1.0";
-        string authority = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+        string siteName = "YourSiteName";             // e.g., "HRPortal"
+        string documentLibraryName = "Documents";     // e.g., "Documents"
+        string fileName = "file.txt";                 // File to download
+        string savePath = @"C:\Downloads\file.txt";   // Local path to save the file
 
         HttpClient client = new HttpClient();
 
         // Get access token
+        string authority = $"https://login.microsoftonline.com/{tenantId}";
+        string tokenUrl = $"{authority}/oauth2/v2.0/token";
+        string graphApiUrl = "https://graph.microsoft.com/v1.0";
+
         var tokenContent = new FormUrlEncodedContent(new[]
         {
             new KeyValuePair<string, string>("grant_type", "client_credentials"),
@@ -34,63 +34,60 @@ public void Main()
             new KeyValuePair<string, string>("scope", "https://graph.microsoft.com/.default")
         });
 
-        var tokenResponse = client.PostAsync(authority, tokenContent).Result;
-        if (!tokenResponse.IsSuccessStatusCode)
-        {
-            Dts.Events.FireError(0, "Token Error", tokenResponse.Content.ReadAsStringAsync().Result, "", 0);
-            Dts.TaskResult = (int)ScriptResults.Failure;
-            return;
-        }
+        HttpResponseMessage tokenResponse = client.PostAsync(tokenUrl, tokenContent).Result;
+        string tokenJson = tokenResponse.Content.ReadAsStringAsync().Result;
 
-        string accessToken = new JavaScriptSerializer().Deserialize<dynamic>(tokenResponse.Content.ReadAsStringAsync().Result)["access_token"];
+        JavaScriptSerializer serializer = new JavaScriptSerializer();
+        serializer.MaxJsonLength = Int32.MaxValue;
+        string accessToken = serializer.Deserialize<Dictionary<string, object>>(tokenJson)["access_token"].ToString();
+
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-        // Get Site ID
+        // Step 1: Get Site ID
         string siteUrl = $"{graphApiUrl}/sites/{tenantDomain}:/sites/{siteName}?$select=id";
-        var siteResponse = client.GetAsync(siteUrl).Result;
-        string siteId = new JavaScriptSerializer().Deserialize<dynamic>(siteResponse.Content.ReadAsStringAsync().Result)["id"];
+        HttpResponseMessage siteResponse = client.GetAsync(siteUrl).Result;
+        string siteId = serializer.Deserialize<Dictionary<string, object>>(siteResponse.Content.ReadAsStringAsync().Result)["id"].ToString();
 
-        // Fetch List Items with Paging
-        string listItemsUrl = $"{graphApiUrl}/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
-        var js = new JavaScriptSerializer();
-        using (SqlConnection conn = new SqlConnection(sqlConnString))
+        // Step 2: Get Drive ID
+        string driveUrl = $"{graphApiUrl}/sites/{siteId}/drives";
+        HttpResponseMessage driveResponse = client.GetAsync(driveUrl).Result;
+        var driveList = serializer.Deserialize<Dictionary<string, object>>(driveResponse.Content.ReadAsStringAsync().Result)["value"] as object[];
+
+        string driveId = null;
+        foreach (Dictionary<string, object> drive in driveList)
         {
-            conn.Open();
-
-            while (!string.IsNullOrEmpty(listItemsUrl))
+            if (drive["name"].ToString() == documentLibraryName)
             {
-                var listResp = client.GetAsync(listItemsUrl).Result;
-                var json = listResp.Content.ReadAsStringAsync().Result;
-                var parsed = js.Deserialize<Dictionary<string, object>>(json);
-                var items = (object[])((Dictionary<string, object>)parsed)["value"];
-
-                foreach (Dictionary<string, object> item in items)
-                {
-                    Dictionary<string, object> fields = (Dictionary<string, object>)item["fields"];
-                    string itemJson = js.Serialize(fields);
-
-                    // Insert into SQL Server
-                    using (SqlCommand cmd = new SqlCommand(storedProc, conn))
-                    {
-                        cmd.CommandType = CommandType.StoredProcedure;
-                        cmd.Parameters.AddWithValue("@ItemJson", itemJson);
-                        cmd.ExecuteNonQuery();
-                    }
-                }
-
-                // Get next page
-                if (parsed.ContainsKey("@odata.nextLink"))
-                    listItemsUrl = parsed["@odata.nextLink"].ToString();
-                else
-                    listItemsUrl = null;
+                driveId = drive["id"].ToString();
+                break;
             }
         }
 
-        Dts.TaskResult = (int)ScriptResults.Success;
+        if (string.IsNullOrEmpty(driveId))
+        {
+            throw new Exception($"Drive '{documentLibraryName}' not found.");
+        }
+
+        // Step 3: Download file
+        string downloadUrl = $"{graphApiUrl}/drives/{driveId}/root:/{fileName}:/content";
+        HttpResponseMessage fileResponse = client.GetAsync(downloadUrl).Result;
+
+        if (fileResponse.IsSuccessStatusCode)
+        {
+            byte[] fileBytes = fileResponse.Content.ReadAsByteArrayAsync().Result;
+            File.WriteAllBytes(savePath, fileBytes);
+            Console.WriteLine("File downloaded successfully.");
+            Dts.TaskResult = (int)ScriptResults.Success;
+        }
+        else
+        {
+            Console.WriteLine("File download failed: " + fileResponse.Content.ReadAsStringAsync().Result);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+        }
     }
     catch (Exception ex)
     {
-        Dts.Events.FireError(0, "Script Task Error", ex.ToString(), "", 0);
+        Console.WriteLine("Error: " + ex.Message);
         Dts.TaskResult = (int)ScriptResults.Failure;
     }
 }
