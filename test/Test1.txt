@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.IO;
@@ -9,23 +10,32 @@ public void Main()
 {
     try
     {
-        // Azure AD credentials and SharePoint settings
+        // -------------------- CONFIGURATION --------------------
         string clientId = "your-client-id";
         string clientSecret = "your-client-secret";
         string tenantId = "your-tenant-id";
-        string tenantDomain = "yourcompany.sharepoint.com";
-        string siteName = "YourSiteName";             // e.g., "HRPortal"
-        string documentLibraryName = "Documents";     // e.g., "Documents"
-        string fileName = "file.txt";                 // File to download
-        string savePath = @"C:\Downloads\file.txt";   // Local path to save the file
+        string tenantDomain = "yourcompany.sharepoint.com";  // e.g., contoso.sharepoint.com
+        string siteName = "YourSiteName";  // e.g., HRPortal
+        string documentLibraryName = "Documents";  // Document Library name
+        string downloadFileName = "yourfile.txt";  // File in SharePoint
+        string savePath = @"C:\Downloaded\" + downloadFileName;
 
-        HttpClient client = new HttpClient();
+        // -------------------- SETUP PROXY SUPPORT --------------------
+        var handler = new HttpClientHandler()
+        {
+            UseProxy = true,
+            Proxy = WebRequest.DefaultWebProxy,
+            UseDefaultCredentials = true, // Use Windows credentials
+            PreAuthenticate = true
+        };
 
-        // Get access token
+        HttpClient client = new HttpClient(handler);
         string authority = $"https://login.microsoftonline.com/{tenantId}";
-        string tokenUrl = $"{authority}/oauth2/v2.0/token";
         string graphApiUrl = "https://graph.microsoft.com/v1.0";
+        string tokenUrl = $"{authority}/oauth2/v2.0/token";
 
+        // -------------------- GET ACCESS TOKEN --------------------
+        var tokenRequest = new HttpRequestMessage(HttpMethod.Post, tokenUrl);
         var tokenContent = new FormUrlEncodedContent(new[]
         {
             new KeyValuePair<string, string>("grant_type", "client_credentials"),
@@ -33,61 +43,80 @@ public void Main()
             new KeyValuePair<string, string>("client_secret", clientSecret),
             new KeyValuePair<string, string>("scope", "https://graph.microsoft.com/.default")
         });
+        tokenRequest.Content = tokenContent;
 
-        HttpResponseMessage tokenResponse = client.PostAsync(tokenUrl, tokenContent).Result;
-        string tokenJson = tokenResponse.Content.ReadAsStringAsync().Result;
+        HttpResponseMessage tokenResponse = client.SendAsync(tokenRequest).Result;
+        if (!tokenResponse.IsSuccessStatusCode)
+        {
+            Dts.Events.FireError(0, "Token", "Failed to obtain token: " + tokenResponse.Content.ReadAsStringAsync().Result, "", 0);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+            return;
+        }
 
-        JavaScriptSerializer serializer = new JavaScriptSerializer();
-        serializer.MaxJsonLength = Int32.MaxValue;
-        string accessToken = serializer.Deserialize<Dictionary<string, object>>(tokenJson)["access_token"].ToString();
-
+        string accessToken = new JavaScriptSerializer().Deserialize<dynamic>(tokenResponse.Content.ReadAsStringAsync().Result)["access_token"];
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-        // Step 1: Get Site ID
+        // -------------------- GET SITE ID --------------------
         string siteUrl = $"{graphApiUrl}/sites/{tenantDomain}:/sites/{siteName}?$select=id";
         HttpResponseMessage siteResponse = client.GetAsync(siteUrl).Result;
-        string siteId = serializer.Deserialize<Dictionary<string, object>>(siteResponse.Content.ReadAsStringAsync().Result)["id"].ToString();
+        if (!siteResponse.IsSuccessStatusCode)
+        {
+            Dts.Events.FireError(0, "Site ID", "Failed to get site ID: " + siteResponse.Content.ReadAsStringAsync().Result, "", 0);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+            return;
+        }
 
-        // Step 2: Get Drive ID
+        string siteId = new JavaScriptSerializer().Deserialize<dynamic>(siteResponse.Content.ReadAsStringAsync().Result)["id"];
+
+        // -------------------- GET DRIVE ID --------------------
         string driveUrl = $"{graphApiUrl}/sites/{siteId}/drives";
         HttpResponseMessage driveResponse = client.GetAsync(driveUrl).Result;
-        var driveList = serializer.Deserialize<Dictionary<string, object>>(driveResponse.Content.ReadAsStringAsync().Result)["value"] as object[];
-
-        string driveId = null;
-        foreach (Dictionary<string, object> drive in driveList)
+        if (!driveResponse.IsSuccessStatusCode)
         {
-            if (drive["name"].ToString() == documentLibraryName)
+            Dts.Events.FireError(0, "Drive", "Failed to get document libraries: " + driveResponse.Content.ReadAsStringAsync().Result, "", 0);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+            return;
+        }
+
+        var drives = new JavaScriptSerializer().Deserialize<dynamic>(driveResponse.Content.ReadAsStringAsync().Result)["value"];
+        string driveId = null;
+        foreach (var drive in drives)
+        {
+            if (drive["name"] == documentLibraryName)
             {
-                driveId = drive["id"].ToString();
+                driveId = drive["id"];
                 break;
             }
         }
 
         if (string.IsNullOrEmpty(driveId))
         {
-            throw new Exception($"Drive '{documentLibraryName}' not found.");
+            Dts.Events.FireError(0, "Drive", "Document Library not found.", "", 0);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+            return;
         }
 
-        // Step 3: Download file
-        string downloadUrl = $"{graphApiUrl}/drives/{driveId}/root:/{fileName}:/content";
-        HttpResponseMessage fileResponse = client.GetAsync(downloadUrl).Result;
+        // -------------------- DOWNLOAD FILE --------------------
+        string downloadUrl = $"{graphApiUrl}/drives/{driveId}/root:/{downloadFileName}:/content";
 
-        if (fileResponse.IsSuccessStatusCode)
+        HttpResponseMessage downloadResponse = client.GetAsync(downloadUrl).Result;
+        if (downloadResponse.IsSuccessStatusCode)
         {
-            byte[] fileBytes = fileResponse.Content.ReadAsByteArrayAsync().Result;
+            byte[] fileBytes = downloadResponse.Content.ReadAsByteArrayAsync().Result;
             File.WriteAllBytes(savePath, fileBytes);
-            Console.WriteLine("File downloaded successfully.");
+
+            Dts.Events.FireInformation(0, "Download", $"File downloaded to {savePath}", "", 0, ref boolRef: ref false);
             Dts.TaskResult = (int)ScriptResults.Success;
         }
         else
         {
-            Console.WriteLine("File download failed: " + fileResponse.Content.ReadAsStringAsync().Result);
+            Dts.Events.FireError(0, "Download", "Failed to download file: " + downloadResponse.Content.ReadAsStringAsync().Result, "", 0);
             Dts.TaskResult = (int)ScriptResults.Failure;
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine("Error: " + ex.Message);
+        Dts.Events.FireError(0, "Exception", ex.Message, "", 0);
         Dts.TaskResult = (int)ScriptResults.Failure;
     }
 }
