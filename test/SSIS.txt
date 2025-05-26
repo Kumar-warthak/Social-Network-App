@@ -170,6 +170,7 @@ public class ScriptMain
 }
 
 Download File
+
 using System;
 using System.IO;
 using System.Net;
@@ -179,35 +180,35 @@ using System.Collections.Generic;
 
 public class ScriptMain
 {
-    // Replace with your actual values
+    // Replace these with your actual values
     string tenantId = "your-tenant-id";
     string clientId = "your-client-id";
     string clientSecret = "your-client-secret";
     string tenantDomain = "yourcompany.sharepoint.com";
-    string siteName = "abc-001";  // your SharePoint site
-    string documentLibraryName = "Documents";  // usually "Documents" or your custom library
-    string proxyUrl = "http://proxy.company.com:8080";  // optional, if required in your network
+    string siteName = "abc-001"; // your site
+    string documentLibraryName = "Documents"; // SharePoint library name
+    string proxyUrl = "http://proxy.company.com:8080"; // optional proxy
 
     public void Main()
     {
         try
         {
-            string localFilePath = @"C:\LocalFolder\file.pdf";
             string remoteFilePath = "FolderInLibrary/file.pdf";
+            string localFilePath = @"C:\DownloadedFolder\file.pdf";
 
-            UploadFileToSharePoint(localFilePath, remoteFilePath);
+            DownloadFileFromSharePoint(remoteFilePath, localFilePath);
 
             Dts.TaskResult = (int)ScriptResults.Success;
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Fatal error: " + ex.Message);
+            Console.WriteLine("Download failed: " + ex.Message);
             Dts.TaskResult = (int)ScriptResults.Failure;
-            return; // Exit immediately
+            return;
         }
     }
 
-    private void UploadFileToSharePoint(string localFilePath, string remoteFilePath)
+    private void DownloadFileFromSharePoint(string remoteFilePath, string localFilePath)
     {
         try
         {
@@ -220,29 +221,24 @@ public class ScriptMain
             string siteId = GetSiteId(accessToken, proxy);
             string driveId = GetDriveId(accessToken, proxy, siteId);
 
-            byte[] fileBytes = File.ReadAllBytes(localFilePath);
-            string uploadUrl = $"https://graph.microsoft.com/v1.0/drives/{driveId}/root:/{remoteFilePath}:/content";
+            string downloadUrl = $"https://graph.microsoft.com/v1.0/drives/{driveId}/root:/{remoteFilePath}:/content";
 
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uploadUrl);
-            request.Method = "PUT";
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(downloadUrl);
+            request.Method = "GET";
             request.Headers.Add("Authorization", "Bearer " + accessToken);
-            request.ContentType = "application/octet-stream";
-            request.ContentLength = fileBytes.Length;
             request.Proxy = proxy;
 
-            using (Stream stream = request.GetRequestStream())
-                stream.Write(fileBytes, 0, fileBytes.Length);
-
             using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+            using (Stream responseStream = response.GetResponseStream())
+            using (FileStream fs = new FileStream(localFilePath, FileMode.Create, FileAccess.Write))
             {
-                string result = reader.ReadToEnd();
-                Console.WriteLine("Upload successful: " + result);
+                responseStream.CopyTo(fs);
+                Console.WriteLine("File downloaded to: " + localFilePath);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Upload failed: " + ex.Message);
+            Console.WriteLine("Error downloading file: " + ex.Message);
             throw;
         }
     }
@@ -274,7 +270,7 @@ public class ScriptMain
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Token retrieval failed: " + ex.Message);
+            Console.WriteLine("Token error: " + ex.Message);
             throw;
         }
     }
@@ -299,7 +295,7 @@ public class ScriptMain
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Site ID fetch failed: " + ex.Message);
+            Console.WriteLine("Site ID error: " + ex.Message);
             throw;
         }
     }
@@ -333,11 +329,12 @@ public class ScriptMain
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Drive ID fetch failed: " + ex.Message);
+            Console.WriteLine("Drive ID error: " + ex.Message);
             throw;
         }
     }
 }
+
 
 
 Move File
