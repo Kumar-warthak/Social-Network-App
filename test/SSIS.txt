@@ -494,21 +494,21 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.IO;
 using System.Net;
 using System.Text;
-using System.IO;
-using Microsoft.Identity.Client;
-using Newtonsoft.Json.Linq;
+using System.Web.Script.Serialization;
 
 class Program
 {
+    // === CONFIGURATION ===
     private static readonly string tenantId = "your-tenant-id";
     private static readonly string clientId = "your-client-id";
     private static readonly string clientSecret = "your-client-secret";
-    private static readonly string siteName = "yourtenant.sharepoint.com:/sites/yoursite";
+    private static readonly string sitePath = "yourtenant.sharepoint.com:/sites/yoursite";
     private static readonly string listName = "your-list-name";
     private static readonly string sqlConnectionString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
-    private static readonly string proxyUrl = "http://proxy.company.com:8080"; // Set to null or "" if no proxy
+    private static readonly string proxyUrl = "http://proxy.company.com:8080"; // Leave empty "" if no proxy
 
     static void Main()
     {
@@ -516,75 +516,100 @@ class Program
         {
             string token = GetAccessToken();
             string siteId = GetSiteId(token);
-            List<JObject> items = GetListItems(siteId, listName, token);
+            var items = GetListItems(siteId, listName, token);
             InsertItemsToSql(items);
         }
         catch (Exception ex)
         {
             Console.WriteLine("Error: " + ex.Message);
-            Environment.Exit(1); // Fail-fast
+            Environment.Exit(1); // Fail fast
         }
     }
 
     static string GetAccessToken()
     {
-        var app = ConfidentialClientApplicationBuilder
-            .Create(clientId)
-            .WithClientSecret(clientSecret)
-            .WithAuthority(new Uri($"https://login.microsoftonline.com/{tenantId}"))
-            .Build();
+        string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+        string postData = $"client_id={clientId}&scope=https://graph.microsoft.com/.default&client_secret={Uri.EscapeDataString(clientSecret)}&grant_type=client_credentials";
 
-        var result = app.AcquireTokenForClient(new[] { "https://graph.microsoft.com/.default" }).ExecuteAsync().Result;
-        return result.AccessToken;
-    }
+        var request = (HttpWebRequest)WebRequest.Create(url);
+        request.Method = "POST";
+        request.ContentType = "application/x-www-form-urlencoded";
+        if (!string.IsNullOrEmpty(proxyUrl))
+            request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
 
-    static IWebProxy GetProxy()
-    {
-        if (string.IsNullOrEmpty(proxyUrl)) return null;
-        return new WebProxy(proxyUrl, true) { Credentials = CredentialCache.DefaultCredentials };
+        using (var stream = new StreamWriter(request.GetRequestStream()))
+        {
+            stream.Write(postData);
+        }
+
+        using (var response = (HttpWebResponse)request.GetResponse())
+        using (var reader = new StreamReader(response.GetResponseStream()))
+        {
+            var json = reader.ReadToEnd();
+            var serializer = new JavaScriptSerializer();
+            var result = serializer.Deserialize<Dictionary<string, object>>(json);
+            return result["access_token"].ToString();
+        }
     }
 
     static string GetSiteId(string token)
     {
-        string url = $"https://graph.microsoft.com/v1.0/sites/{siteName}";
-        string jsonResponse = SendGraphRequest(url, "GET", token);
-        var json = JObject.Parse(jsonResponse);
-        return json["id"]?.ToString() ?? throw new Exception("Site ID not found");
+        string url = $"https://graph.microsoft.com/v1.0/sites/{sitePath}";
+        string responseText = SendGraphRequest(url, token);
+
+        var serializer = new JavaScriptSerializer();
+        var data = serializer.Deserialize<Dictionary<string, object>>(responseText);
+
+        if (data.ContainsKey("id"))
+            return data["id"].ToString();
+
+        throw new Exception("Site ID not found in response");
     }
 
-    static List<JObject> GetListItems(string siteId, string listName, string token)
+    static List<Dictionary<string, object>> GetListItems(string siteId, string listName, string token)
     {
         string url = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields";
-        string jsonResponse = SendGraphRequest(url, "GET", token);
-        var json = JObject.Parse(jsonResponse);
+        string responseText = SendGraphRequest(url, token);
 
-        var items = new List<JObject>();
-        foreach (var item in json["value"])
+        var serializer = new JavaScriptSerializer();
+        var data = serializer.Deserialize<Dictionary<string, object>>(responseText);
+
+        var resultList = new List<Dictionary<string, object>>();
+
+        if (data.ContainsKey("value"))
         {
-            items.Add((JObject)item["fields"]);
-        }
-
-        return items;
-    }
-
-    static string SendGraphRequest(string url, string method, string token)
-    {
-        var request = (HttpWebRequest)WebRequest.Create(url);
-        request.Method = method;
-        request.Headers.Add("Authorization", "Bearer " + token);
-        request.ContentType = "application/json";
-        request.Proxy = GetProxy();
-
-        using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-        {
-            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+            object[] items = (object[])data["value"];
+            foreach (var itemObj in items)
             {
-                return reader.ReadToEnd();
+                var itemDict = (Dictionary<string, object>)itemObj;
+                if (itemDict.ContainsKey("fields"))
+                {
+                    var fields = (Dictionary<string, object>)itemDict["fields"];
+                    resultList.Add(fields);
+                }
             }
         }
+
+        return resultList;
     }
 
-    static void InsertItemsToSql(List<JObject> items)
+    static string SendGraphRequest(string url, string token)
+    {
+        var request = (HttpWebRequest)WebRequest.Create(url);
+        request.Method = "GET";
+        request.Headers.Add("Authorization", "Bearer " + token);
+        request.ContentType = "application/json";
+        if (!string.IsNullOrEmpty(proxyUrl))
+            request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
+
+        using (var response = (HttpWebResponse)request.GetResponse())
+        using (var reader = new StreamReader(response.GetResponseStream()))
+        {
+            return reader.ReadToEnd();
+        }
+    }
+
+    static void InsertItemsToSql(List<Dictionary<string, object>> items)
     {
         using (SqlConnection conn = new SqlConnection(sqlConnectionString))
         {
@@ -596,11 +621,10 @@ class Program
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
 
-                    // Map SharePoint list fields to SP params
-                    cmd.Parameters.AddWithValue("@Title", item["Title"]?.ToString() ?? "");
-                    cmd.Parameters.AddWithValue("@Created", item["Created"]?.ToString() ?? "");
+                    cmd.Parameters.AddWithValue("@Title", item.ContainsKey("Title") ? item["Title"]?.ToString() ?? "" : "");
+                    cmd.Parameters.AddWithValue("@Created", item.ContainsKey("Created") ? item["Created"]?.ToString() ?? "" : "");
 
-                    // Add additional parameters based on your SP schema
+                    // Add other SP parameters here
 
                     cmd.ExecuteNonQuery();
                 }
@@ -608,7 +632,6 @@ class Program
         }
     }
 }
-
 
 
 
