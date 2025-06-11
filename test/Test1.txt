@@ -1,97 +1,137 @@
 using System;
-using System.Net.Http;
-using System.Net.Http.Headers;
+using System.Data;
+using System.Data.SqlClient;
+using System.IO;
+using System.Net;
 using System.Text;
-using System.Collections.Generic;
-using System.Web.Script.Serialization;
+using System.Text.Json;
 
 public void Main()
 {
+    string tenantId = "your-tenant-id";
+    string clientId = "your-client-id";
+    string clientSecret = "your-client-secret";
+    string siteName = "your-tenant.sharepoint.com:/sites/yoursite";
+    string listName = "your-list-name";
+    string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
+    string storedProc = "YourInsertListItemProc";
+    string proxyUrl = "http://your-proxy-server:port";
+
+    IWebProxy proxy = string.IsNullOrEmpty(proxyUrl) ? null : new WebProxy(proxyUrl, true)
+    {
+        Credentials = CredentialCache.DefaultCredentials
+    };
+
     try
     {
-        // === CONFIG ===
-        string clientId = "YOUR_CLIENT_ID";
-        string clientSecret = "YOUR_CLIENT_SECRET";
-        string tenantId = "YOUR_TENANT_ID";
-        string tenantDomain = "yourtenant.sharepoint.com";
-        string siteName = "YourSiteName"; // e.g. HRPortal
-        string documentLibraryName = "Documents";
-        string sourceFolder = "SourceFolder";
-        string destinationFolder = "DestinationFolder";
-        string fileName = "file.txt";
+        string token = GetAccessToken(tenantId, clientId, clientSecret, proxy);
+        string siteId = GetSiteId(token, siteName, proxy);
+        FetchAndInsertListItems(siteId, token, listName, sqlConnString, storedProc, proxy);
 
-        // === Get Access Token ===
-        var tokenClient = new HttpClient();
-        var tokenUrl = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
-        var tokenBody = new FormUrlEncodedContent(new[]
-        {
-            new KeyValuePair<string, string>("grant_type", "client_credentials"),
-            new KeyValuePair<string, string>("client_id", clientId),
-            new KeyValuePair<string, string>("client_secret", clientSecret),
-            new KeyValuePair<string, string>("scope", "https://graph.microsoft.com/.default")
-        });
-        var tokenResponse = tokenClient.PostAsync(tokenUrl, tokenBody).Result;
-        string tokenResult = tokenResponse.Content.ReadAsStringAsync().Result;
-        string accessToken = new JavaScriptSerializer().Deserialize<dynamic>(tokenResult)["access_token"];
-
-        // === Authenticated Client ===
-        HttpClient client = new HttpClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-        // === Get Site ID ===
-        string siteApiUrl = $"https://graph.microsoft.com/v1.0/sites/{tenantDomain}:/sites/{siteName}";
-        HttpResponseMessage siteResp = client.GetAsync(siteApiUrl).Result;
-        string siteJson = siteResp.Content.ReadAsStringAsync().Result;
-        string siteId = new JavaScriptSerializer().Deserialize<dynamic>(siteJson)["id"];
-
-        // === Get Drive ID ===
-        string driveApiUrl = $"https://graph.microsoft.com/v1.0/sites/{siteId}/drives";
-        HttpResponseMessage driveResp = client.GetAsync(driveApiUrl).Result;
-        string drivesJson = driveResp.Content.ReadAsStringAsync().Result;
-        var drives = new JavaScriptSerializer().Deserialize<dynamic>(drivesJson)["value"];
-        string driveId = null;
-        foreach (var d in drives)
-        {
-            if (d["name"] == documentLibraryName)
-            {
-                driveId = d["id"];
-                break;
-            }
-        }
-        if (driveId == null)
-        {
-            Console.WriteLine("Drive not found.");
-            Dts.TaskResult = (int)ScriptResults.Failure;
-            return;
-        }
-
-        // === Move File ===
-        string fileUrl = $"https://graph.microsoft.com/v1.0/drives/{driveId}/root:/{sourceFolder}/{fileName}";
-        var moveBody = new
-        {
-            parentReference = new { path = $"/drives/{driveId}/root:/{destinationFolder}" },
-            name = fileName
-        };
-        string moveJson = new JavaScriptSerializer().Serialize(moveBody);
-        var moveReq = new HttpRequestMessage(new HttpMethod("PATCH"), fileUrl)
-        {
-            Content = new StringContent(moveJson, Encoding.UTF8, "application/json")
-        };
-        HttpResponseMessage moveResp = client.SendAsync(moveReq).Result;
-        if (moveResp.IsSuccessStatusCode)
-        {
-            Console.WriteLine("✅ File moved successfully.");
-            Dts.TaskResult = (int)ScriptResults.Success;
-        }
-        else
-        {
-            Console.WriteLine("❌ Move failed: " + moveResp.Content.ReadAsStringAsync().Result);
-            Dts.TaskResult = (int)ScriptResults.Failure;
-        }
+#if SSIS
+        Dts.TaskResult = (int)ScriptResults.Success;
+#endif
     }
     catch (Exception ex)
     {
-        Console.WriteLine("Exception: " + ex.Message);
+#if SSIS
+        Dts.Events.FireError(0, "Script Task", ex.Message, "", 0);
         Dts.TaskResult = (int)ScriptResults.Failure;
+#else
+        Console.WriteLine("Error: " + ex.Message);
+#endif
+    }
+}
+
+string GetAccessToken(string tenantId, string clientId, string clientSecret, IWebProxy proxy)
+{
+    string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+    string postData = $"client_id={clientId}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret={clientSecret}&grant_type=client_credentials";
+
+    byte[] byteArray = Encoding.UTF8.GetBytes(postData);
+    HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+    request.Method = "POST";
+    request.ContentType = "application/x-www-form-urlencoded";
+    request.ContentLength = byteArray.Length;
+    request.Proxy = proxy;
+
+    using (Stream dataStream = request.GetRequestStream())
+    {
+        dataStream.Write(byteArray, 0, byteArray.Length);
+    }
+
+    using (WebResponse response = request.GetResponse())
+    using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+    {
+        string jsonResponse = reader.ReadToEnd();
+        using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
+        {
+            return doc.RootElement.GetProperty("access_token").GetString();
+        }
+    }
+}
+
+string GetSiteId(string token, string siteName, IWebProxy proxy)
+{
+    string url = $"https://graph.microsoft.com/v1.0/sites/{siteName}";
+    HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+    request.Method = "GET";
+    request.Headers.Add("Authorization", "Bearer " + token);
+    request.Proxy = proxy;
+
+    using (WebResponse response = request.GetResponse())
+    using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+    {
+        string result = reader.ReadToEnd();
+        using (JsonDocument doc = JsonDocument.Parse(result))
+        {
+            return doc.RootElement.GetProperty("id").GetString();
+        }
+    }
+}
+
+void FetchAndInsertListItems(string siteId, string token, string listName, string sqlConnString, string storedProc, IWebProxy proxy)
+{
+    string nextLink = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
+
+    using (SqlConnection conn = new SqlConnection(sqlConnString))
+    {
+        conn.Open();
+
+        while (!string.IsNullOrEmpty(nextLink))
+        {
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextLink);
+            request.Method = "GET";
+            request.Headers.Add("Authorization", "Bearer " + token);
+            request.Proxy = proxy;
+
+            using (WebResponse response = request.GetResponse())
+            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+            {
+                string json = reader.ReadToEnd();
+
+                using (JsonDocument doc = JsonDocument.Parse(json))
+                {
+                    JsonElement root = doc.RootElement;
+
+                    foreach (JsonElement item in root.GetProperty("value").EnumerateArray())
+                    {
+                        string itemJson = item.GetProperty("fields").GetRawText();
+
+                        using (SqlCommand cmd = new SqlCommand(storedProc, conn))
+                        {
+                            cmd.CommandType = CommandType.StoredProcedure;
+                            cmd.Parameters.AddWithValue("@ItemJson", itemJson);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+
+                    if (root.TryGetProperty("@odata.nextLink", out JsonElement nextLinkElement))
+                        nextLink = nextLinkElement.GetString();
+                    else
+                        nextLink = null;
+                }
+            }
+        }
     }
 }
