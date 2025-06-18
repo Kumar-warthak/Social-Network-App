@@ -6,144 +6,139 @@ using System.Net;
 using System.Text;
 using System.Web.Script.Serialization;
 using System.Collections.Generic;
+using Microsoft.SqlServer.Dts.Runtime;
+using System.AddIn;
 
-public void Main()
+[AddIn("ScriptMain", Version = "1.0", Publisher = "", Description = "")]
+public partial class ScriptMain : VSTARTScriptObjectModelBase
 {
-    string tenantId = "your-tenant-id";
-    string clientId = "your-client-id";
-    string clientSecret = "your-client-secret";
-    string siteName = "your-tenant.sharepoint.com:/sites/yoursite";
-    string listName = "your-list-name";
-    string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
-    string storedProc = "YourInsertListItemProc";
-    string proxyUrl = "http://your-proxy-server:port";
-
-    try
+    public void Main()
     {
-        IWebProxy proxy = GetProxy(proxyUrl);
-        string token = GetAccessToken(tenantId, clientId, clientSecret, proxy);
-        string siteId = GetSiteId(token, siteName, proxy);
-        FetchAndInsertListItems(siteId, token, listName, sqlConnString, storedProc, proxy);
+        string tenantId = "your-tenant-id";
+        string clientId = "your-client-id";
+        string clientSecret = "your-client-secret";
+        string siteName = "your-tenant.sharepoint.com:/sites/yoursite";
+        string listName = "your-list-name";
+        string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
+        string storedProc = "YourInsertListItemProc";
+        string proxyUrl = "http://your-proxy-server:port";  // Leave empty if not using proxy
 
-#if SSIS
-        Dts.TaskResult = (int)ScriptResults.Success;
-#endif
-    }
-    catch (Exception ex)
-    {
-#if SSIS
-        Dts.Events.FireError(0, "Script Task", ex.Message, "", 0);
-        Dts.TaskResult = (int)ScriptResults.Failure;
-#else
-        Console.WriteLine("Error: " + ex.Message);
-#endif
-    }
-}
-
-IWebProxy GetProxy(string proxyUrl)
-{
-    return string.IsNullOrEmpty(proxyUrl) ? null : new WebProxy(proxyUrl, true)
-    {
-        Credentials = CredentialCache.DefaultCredentials
-    };
-}
-
-string GetAccessToken(string tenantId, string clientId, string clientSecret, IWebProxy proxy)
-{
-    string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
-    string postData = $"client_id={clientId}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret={clientSecret}&grant_type=client_credentials";
-
-    byte[] byteArray = Encoding.UTF8.GetBytes(postData);
-    HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-    request.Method = "POST";
-    request.ContentType = "application/x-www-form-urlencoded";
-    request.ContentLength = byteArray.Length;
-    request.Proxy = proxy;
-
-    using (Stream dataStream = request.GetRequestStream())
-    {
-        dataStream.Write(byteArray, 0, byteArray.Length);
-    }
-
-    using (WebResponse response = request.GetResponse())
-    using (StreamReader reader = new StreamReader(response.GetResponseStream()))
-    {
-        string jsonResponse = reader.ReadToEnd();
-        JavaScriptSerializer serializer = new JavaScriptSerializer();
-        Dictionary<string, object> tokenData = serializer.Deserialize<Dictionary<string, object>>(jsonResponse);
-        return tokenData["access_token"].ToString();
-    }
-}
-
-string GetSiteId(string token, string siteName, IWebProxy proxy)
-{
-    string url = $"https://graph.microsoft.com/v1.0/sites/{siteName}";
-    HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-    request.Method = "GET";
-    request.Headers.Add("Authorization", "Bearer " + token);
-    request.Proxy = proxy;
-
-    using (WebResponse response = request.GetResponse())
-    using (StreamReader reader = new StreamReader(response.GetResponseStream()))
-    {
-        string result = reader.ReadToEnd();
-        JavaScriptSerializer serializer = new JavaScriptSerializer();
-        Dictionary<string, object> siteData = serializer.Deserialize<Dictionary<string, object>>(result);
-        return siteData["id"].ToString();
-    }
-}
-
-void FetchAndInsertListItems(string siteId, string token, string listName, string sqlConnString, string storedProc, IWebProxy proxy)
-{
-    string nextLink = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
-    JavaScriptSerializer serializer = new JavaScriptSerializer();
-
-    using (SqlConnection conn = new SqlConnection(sqlConnString))
-    {
-        conn.Open();
-
-        while (!string.IsNullOrEmpty(nextLink))
+        try
         {
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextLink);
-            request.Method = "GET";
-            request.Headers.Add("Authorization", "Bearer " + token);
-            request.Proxy = proxy;
+            IWebProxy proxy = GetProxy(proxyUrl);
+            string token = GetAccessToken(tenantId, clientId, clientSecret, proxy);
+            string siteId = GetSiteId(token, siteName, proxy);
+            FetchAndInsertListItems(siteId, token, listName, sqlConnString, storedProc, proxy);
 
-            using (WebResponse response = request.GetResponse())
-            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+            Dts.TaskResult = (int)ScriptResults.Success;
+        }
+        catch (Exception ex)
+        {
+            Dts.Events.FireError(0, "Script Task", ex.ToString(), "", 0);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+        }
+    }
+
+    private IWebProxy GetProxy(string proxyUrl)
+    {
+        return string.IsNullOrEmpty(proxyUrl) ? null : new WebProxy(proxyUrl, true)
+        {
+            Credentials = CredentialCache.DefaultCredentials
+        };
+    }
+
+    private string GetAccessToken(string tenantId, string clientId, string clientSecret, IWebProxy proxy)
+    {
+        string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+        string postData = $"client_id={clientId}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret={clientSecret}&grant_type=client_credentials";
+
+        byte[] byteArray = Encoding.UTF8.GetBytes(postData);
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+        request.Method = "POST";
+        request.ContentType = "application/x-www-form-urlencoded";
+        request.ContentLength = byteArray.Length;
+        request.Proxy = proxy;
+
+        using (Stream dataStream = request.GetRequestStream())
+        {
+            dataStream.Write(byteArray, 0, byteArray.Length);
+        }
+
+        using (WebResponse response = request.GetResponse())
+        using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+        {
+            string jsonResponse = reader.ReadToEnd();
+            JavaScriptSerializer serializer = new JavaScriptSerializer();
+            Dictionary<string, object> tokenData = serializer.Deserialize<Dictionary<string, object>>(jsonResponse);
+            return tokenData["access_token"].ToString();
+        }
+    }
+
+    private string GetSiteId(string token, string siteName, IWebProxy proxy)
+    {
+        string url = $"https://graph.microsoft.com/v1.0/sites/{siteName}";
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+        request.Method = "GET";
+        request.Headers.Add("Authorization", "Bearer " + token);
+        request.Proxy = proxy;
+
+        using (WebResponse response = request.GetResponse())
+        using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+        {
+            string result = reader.ReadToEnd();
+            JavaScriptSerializer serializer = new JavaScriptSerializer();
+            Dictionary<string, object> siteData = serializer.Deserialize<Dictionary<string, object>>(result);
+            return siteData["id"].ToString();
+        }
+    }
+
+    private void FetchAndInsertListItems(string siteId, string token, string listName, string sqlConnString, string storedProc, IWebProxy proxy)
+    {
+        string nextLink = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
+        JavaScriptSerializer serializer = new JavaScriptSerializer();
+
+        using (SqlConnection conn = new SqlConnection(sqlConnString))
+        {
+            conn.Open();
+
+            while (!string.IsNullOrEmpty(nextLink))
             {
-                string json = reader.ReadToEnd();
-                Dictionary<string, object> root = serializer.Deserialize<Dictionary<string, object>>(json);
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextLink);
+                request.Method = "GET";
+                request.Headers.Add("Authorization", "Bearer " + token);
+                request.Proxy = proxy;
 
-                if (root.ContainsKey("value"))
+                using (WebResponse response = request.GetResponse())
+                using (StreamReader reader = new StreamReader(response.GetResponseStream()))
                 {
-                    object[] items = (object[])root["value"];
-                    foreach (var item in items)
+                    string json = reader.ReadToEnd();
+                    Dictionary<string, object> root = serializer.Deserialize<Dictionary<string, object>>(json);
+
+                    if (root.ContainsKey("value"))
                     {
-                        Dictionary<string, object> itemDict = (Dictionary<string, object>)item;
-                        if (itemDict.ContainsKey("fields"))
+                        object[] items = (object[])root["value"];
+                        foreach (var item in items)
                         {
-                            string fieldsJson = serializer.Serialize(itemDict["fields"]);
-                            using (SqlCommand cmd = new SqlCommand(storedProc, conn))
+                            Dictionary<string, object> itemDict = (Dictionary<string, object>)item;
+                            if (itemDict.ContainsKey("fields"))
                             {
-                                cmd.CommandType = CommandType.StoredProcedure;
-                                cmd.Parameters.AddWithValue("@ItemJson", fieldsJson);
-                                cmd.ExecuteNonQuery();
+                                string fieldsJson = serializer.Serialize(itemDict["fields"]);
+                                using (SqlCommand cmd = new SqlCommand(storedProc, conn))
+                                {
+                                    cmd.CommandType = CommandType.StoredProcedure;
+                                    cmd.Parameters.AddWithValue("@ItemJson", fieldsJson);
+                                    cmd.ExecuteNonQuery();
+                                }
                             }
                         }
                     }
-                }
 
-                if (root.ContainsKey("@odata.nextLink"))
-                {
-                    nextLink = root["@odata.nextLink"].ToString();
-                }
-                else
-                {
-                    nextLink = null;
+                    if (root.ContainsKey("@odata.nextLink"))
+                        nextLink = root["@odata.nextLink"].ToString();
+                    else
+                        nextLink = null;
                 }
             }
         }
     }
 }
-
