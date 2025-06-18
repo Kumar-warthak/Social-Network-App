@@ -151,3 +151,54 @@ namespace ST_YourNamespace
         }
     }
 }
+
+
+private void FetchAndInsertListItems(string siteId, string token, string listName, string sqlConnString, string storedProc, string proxyUrl)
+{
+    string nextLink = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields&$top=5000";
+
+    using (SqlConnection conn = new SqlConnection(sqlConnString))
+    {
+        conn.Open();
+        JavaScriptSerializer serializer = new JavaScriptSerializer { MaxJsonLength = Int32.MaxValue };
+
+        while (!string.IsNullOrEmpty(nextLink))
+        {
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextLink);
+            request.Method = "GET";
+            request.Headers.Add("Authorization", "Bearer " + token);
+
+            if (!string.IsNullOrEmpty(proxyUrl))
+            {
+                request.Proxy = new WebProxy(proxyUrl, true)
+                {
+                    Credentials = CredentialCache.DefaultCredentials
+                };
+            }
+
+            using (WebResponse response = request.GetResponse())
+            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+            {
+                string json = reader.ReadToEnd();
+                var result = (Dictionary<string, object>)serializer.Deserialize<object>(json);
+
+                object[] items = (object[])result["value"];
+                foreach (object obj in items)
+                {
+                    Dictionary<string, object> item = (Dictionary<string, object>)obj;
+                    var fields = (Dictionary<string, object>)item["fields"];
+                    string itemJson = serializer.Serialize(fields);
+
+                    using (SqlCommand cmd = new SqlCommand(storedProc, conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@ItemJson", itemJson);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                nextLink = result.ContainsKey("@odata.nextLink") ? result["@odata.nextLink"].ToString() : null;
+            }
+        }
+    }
+}
