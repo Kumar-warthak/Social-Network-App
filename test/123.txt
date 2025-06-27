@@ -1,12 +1,50 @@
-If(
-    Len(ComboBox_Employees.SearchText) >= 3,
-    AddColumns(
-        Filter(
-            EmployeeList,
-            StartsWith(Text(ID), ComboBox_Employees.SearchText) ||
-            StartsWith(FullName, ComboBox_Employees.SearchText)
-        ),
-        "DisplayText", Text(ID) & " - " & FullName
-    ),
-    []
-)
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Text;
+using System.Web.Script.Serialization;
+
+public string GetAllSiteUsersAsJson(string siteId, string token, string proxyUrl = null)
+{
+    string baseUrl = $"https://graph.microsoft.com/v1.0/sites/{siteId}/users";
+    var allUsers = new List<object>();
+    var serializer = new JavaScriptSerializer();
+
+    string nextUrl = baseUrl;
+
+    while (!string.IsNullOrEmpty(nextUrl))
+    {
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextUrl);
+        request.Method = "GET";
+        request.Headers.Add("Authorization", "Bearer " + token);
+        if (!string.IsNullOrEmpty(proxyUrl))
+            request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
+
+        using (WebResponse response = request.GetResponse())
+        using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+        {
+            string json = reader.ReadToEnd();
+            var parsed = serializer.Deserialize<Dictionary<string, object>>(json);
+
+            if (parsed.ContainsKey("value"))
+            {
+                object[] users = (object[])parsed["value"];
+                allUsers.AddRange(users);
+            }
+
+            if (parsed.ContainsKey("@odata.nextLink"))
+                nextUrl = parsed["@odata.nextLink"].ToString();
+            else
+                nextUrl = null;
+        }
+    }
+
+    // Wrap all users in one JSON object (like original Graph response)
+    var combinedResult = new Dictionary<string, object>
+    {
+        { "value", allUsers }
+    };
+
+    return serializer.Serialize(combinedResult);
+}
