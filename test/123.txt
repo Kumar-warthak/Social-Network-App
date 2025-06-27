@@ -5,7 +5,7 @@ using System.Net;
 using System.Text;
 using System.Web.Script.Serialization;
 
-public string GetAllSiteUsersAsJson(string siteId, string token, string proxyUrl = null)
+public List<object> GetAllSiteUsersAsObjectList(string siteId, string token, string proxyUrl = null)
 {
     string baseUrl = $"https://graph.microsoft.com/v1.0/sites/{siteId}/users";
     var allUsers = new List<object>();
@@ -18,6 +18,7 @@ public string GetAllSiteUsersAsJson(string siteId, string token, string proxyUrl
         HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextUrl);
         request.Method = "GET";
         request.Headers.Add("Authorization", "Bearer " + token);
+
         if (!string.IsNullOrEmpty(proxyUrl))
             request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
 
@@ -33,18 +34,9 @@ public string GetAllSiteUsersAsJson(string siteId, string token, string proxyUrl
                 allUsers.AddRange(users);
             }
 
-            if (parsed.ContainsKey("@odata.nextLink"))
-                nextUrl = parsed["@odata.nextLink"].ToString();
-            else
-                nextUrl = null;
+            nextUrl = parsed.ContainsKey("@odata.nextLink") ? parsed["@odata.nextLink"].ToString() : null;
         }
     }
 
-    // Wrap all users in one JSON object (like original Graph response)
-    var combinedResult = new Dictionary<string, object>
-    {
-        { "value", allUsers }
-    };
-
-    return serializer.Serialize(combinedResult);
+    return allUsers;
 }
