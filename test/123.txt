@@ -1,21 +1,12 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Net;
-using System.Text;
-using System.Web.Script.Serialization;
-
-public List<object> GetAllSiteUsersAsObjectList(string siteId, string token, string proxyUrl = null)
+public List<Dictionary<string, object>> GetSiteUsers(string siteId, string token, string proxyUrl = null)
 {
-    string baseUrl = $"https://graph.microsoft.com/v1.0/sites/{siteId}/users";
-    var allUsers = new List<object>();
+    string url = $"https://graph.microsoft.com/v1.0/sites/{siteId}/users";
+    var users = new List<Dictionary<string, object>>();
     var serializer = new JavaScriptSerializer();
 
-    string nextUrl = baseUrl;
-
-    while (!string.IsNullOrEmpty(nextUrl))
+    while (!string.IsNullOrEmpty(url))
     {
-        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextUrl);
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
         request.Method = "GET";
         request.Headers.Add("Authorization", "Bearer " + token);
 
@@ -26,17 +17,15 @@ public List<object> GetAllSiteUsersAsObjectList(string siteId, string token, str
         using (StreamReader reader = new StreamReader(response.GetResponseStream()))
         {
             string json = reader.ReadToEnd();
-            var parsed = serializer.Deserialize<Dictionary<string, object>>(json);
+            var result = serializer.Deserialize<Dictionary<string, object>>(json);
 
-            if (parsed.ContainsKey("value"))
-            {
-                object[] users = (object[])parsed["value"];
-                allUsers.AddRange(users);
-            }
+            var valueList = (System.Collections.ArrayList)result["value"];
+            foreach (var u in valueList)
+                users.Add((Dictionary<string, object>)u);
 
-            nextUrl = parsed.ContainsKey("@odata.nextLink") ? parsed["@odata.nextLink"].ToString() : null;
+            url = result.ContainsKey("@odata.nextLink") ? result["@odata.nextLink"].ToString() : null;
         }
     }
 
-    return allUsers;
+    return users;
 }
