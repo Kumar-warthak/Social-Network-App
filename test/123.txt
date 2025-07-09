@@ -1,172 +1,50 @@
-#region Namespaces
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
-using Microsoft.SqlServer.Dts.Runtime;
-using System.Web.Script.Serialization; // Added for JSON serialization/deserialization
-#endregion
+using System.Web.Script.Serialization;
 
-public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
+public static class SharePointUserHelper
 {
-    /// <summary>
-    /// The main entry point for the Script Task.
-    /// </summary>
-    public void Main()
+    public static string GetAllSharePointUsersAsJson(string siteUrl, string accessToken, string proxyUrl = null)
     {
-        try
-        {
-            // --- 1. Read SSIS Variables ---
-            string tenantId = Dts.Variables["User::GraphTenantId"].Value.ToString();
-            string clientId = Dts.Variables["User::GraphClientId"].Value.ToString();
-            string clientSecret = Dts.Variables["User::GraphClientSecret"].GetSensitiveValue().ToString();
-            string spHostname = Dts.Variables["User::SharePointHostname"].Value.ToString();
-            string siteName = Dts.Variables["User::SharePointSiteName"].Value.ToString();
-            string userEmail = Dts.Variables["User::UserEmail"].Value.ToString();
+        string url = $"{siteUrl}/_api/web/siteusers";
 
-            // --- 2. Get Access Token ---
-            Dts.Events.FireInformation(0, "Graph API", "Getting access token...", string.Empty, 0, ref Dts.Events.GetFireAgain());
-            string accessToken = GetAccessToken(tenantId, clientId, clientSecret);
-
-            // --- 3. Get Site ID ---
-            Dts.Events.FireInformation(0, "Graph API", "Getting SharePoint Site ID...", string.Empty, 0, ref Dts.Events.GetFireAgain());
-            string siteId = GetSiteId(accessToken, spHostname, siteName);
-
-            // --- 4. Get User Information List ID ---
-            Dts.Events.FireInformation(0, "Graph API", "Getting User Information List ID...", string.Empty, 0, ref Dts.Events.GetFireAgain());
-            string listId = GetUserInfoListId(accessToken, siteId);
-
-            // --- 5. Get SharePoint User ID ---
-            Dts.Events.FireInformation(0, "Graph API", "Getting SharePoint User ID for " + userEmail, string.Empty, 0, ref Dts.Events.GetFireAgain());
-            string sharepointUserId = GetSharePointUserId(accessToken, siteId, listId, userEmail);
-
-            // --- 6. Write Result to SSIS Variable ---
-            Dts.Variables["User::SharePointUserID"].Value = sharepointUserId;
-
-            Dts.Events.FireInformation(0, "Graph API", "Successfully retrieved SharePoint User ID: " + sharepointUserId, string.Empty, 0, ref Dts.Events.GetFireAgain());
-            Dts.TaskResult = (int)ScriptResults.Success;
-        }
-        catch (Exception ex)
-        {
-            Dts.Events.FireError(0, "Graph API Error", ex.ToString(), string.Empty, 0);
-            Dts.TaskResult = (int)ScriptResults.Failure;
-        }
-    }
-
-    private string GetAccessToken(string tenantId, string clientId, string clientSecret)
-    {
-        string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
-        var request = (HttpWebRequest)WebRequest.Create(url);
-        request.Method = "POST";
-        request.ContentType = "application/x-www-form-urlencoded";
-
-        string postData = $"client_id={clientId}&client_secret={clientSecret}&scope=https://graph.microsoft.com/.default&grant_type=client_credentials";
-        byte[] byteArray = Encoding.UTF8.GetBytes(postData);
-        request.ContentLength = byteArray.Length;
-
-        using (Stream dataStream = request.GetRequestStream())
-        {
-            dataStream.Write(byteArray, 0, byteArray.Length);
-        }
-
-        string responseFromServer = GetResponseFromServer(request);
-        var jss = new JavaScriptSerializer();
-        var tokenResponse = jss.Deserialize<TokenResponse>(responseFromServer);
-        return tokenResponse.AccessToken;
-    }
-
-    private string GetSiteId(string accessToken, string hostname, string siteName)
-    {
-        string url = $"https://graph.microsoft.com/v1.0/sites/{hostname}:/sites/{siteName}";
-        string responseFromServer = MakeGetRequest(url, accessToken);
-        var jss = new JavaScriptSerializer();
-        var siteResponse = jss.Deserialize<GraphObject>(responseFromServer);
-        return siteResponse.Id;
-    }
-
-    private string GetUserInfoListId(string accessToken, string siteId)
-    {
-        string url = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists?$filter=displayName eq 'User Information List'";
-        string responseFromServer = MakeGetRequest(url, accessToken);
-        var jss = new JavaScriptSerializer();
-        var listCollection = jss.Deserialize<GraphCollection<GraphObject>>(responseFromServer);
-        if (listCollection.Value.Count == 0) throw new Exception("User Information List not found.");
-        return listCollection.Value[0].Id;
-    }
-
-    private string GetSharePointUserId(string accessToken, string siteId, string listId, string userEmail)
-    {
-        string url = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listId}/items?$expand=fields(select=EMail)&$filter=fields/EMail eq '{userEmail}'";
-        string responseFromServer = MakeGetRequest(url, accessToken);
-        var jss = new JavaScriptSerializer();
-        var itemCollection = jss.Deserialize<GraphCollection<GraphObjectWithFields>>(responseFromServer);
-        if (itemCollection.Value.Count == 0) throw new Exception($"User with email '{userEmail}' not found in the site's User Information List.");
-        return itemCollection.Value[0].Id;
-    }
-
-    // Helper method for GET requests
-    private string MakeGetRequest(string url, string accessToken)
-    {
-        var request = (HttpWebRequest)WebRequest.Create(url);
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
         request.Method = "GET";
+        request.Accept = "application/json;odata=verbose";
         request.Headers.Add("Authorization", "Bearer " + accessToken);
-        return GetResponseFromServer(request);
-    }
 
-    // Helper method to read the response stream
-    private string GetResponseFromServer(HttpWebRequest request)
-    {
-        using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+        if (!string.IsNullOrEmpty(proxyUrl))
+            request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
+
+        using (WebResponse response = request.GetResponse())
+        using (StreamReader reader = new StreamReader(response.GetResponseStream()))
         {
-            // Check for non-successful status codes
-            if (response.StatusCode != HttpStatusCode.OK)
+            string json = reader.ReadToEnd();
+
+            // Optionally clean up @odata properties (if needed)
+            JavaScriptSerializer serializer = new JavaScriptSerializer();
+            var outer = serializer.Deserialize<Dictionary<string, object>>(json);
+            var d = (Dictionary<string, object>)outer["d"];
+            var users = (object[])d["results"];
+
+            List<Dictionary<string, object>> cleanUsers = new List<Dictionary<string, object>>();
+
+            foreach (Dictionary<string, object> user in users)
             {
-                throw new WebException($"Server returned error: {response.StatusCode} {response.StatusDescription}");
+                // Exclude @odata fields
+                Dictionary<string, object> cleaned = new Dictionary<string, object>();
+                foreach (var kv in user)
+                {
+                    if (!kv.Key.StartsWith("__") && !kv.Key.StartsWith("odata"))
+                        cleaned[kv.Key] = kv.Value;
+                }
+                cleanUsers.Add(cleaned);
             }
 
-            using (Stream dataStream = response.GetResponseStream())
-            {
-                using (StreamReader reader = new StreamReader(dataStream))
-                {
-                    return reader.ReadToEnd();
-                }
-            }
+            return serializer.Serialize(cleanUsers);
         }
     }
-
-    #region Helper Classes for JSON Deserialization
-    private class TokenResponse
-    {
-        public string AccessToken { get; set; }
-    }
-
-    private class GraphObject
-    {
-        public string Id { get; set; }
-    }
-
-    private class GraphObjectWithFields : GraphObject
-    {
-        public Fields Fields { get; set; }
-    }
-
-    private class Fields
-    {
-        public string EMail { get; set; }
-    }
-
-    private class GraphCollection<T>
-    {
-        public List<T> Value { get; set; }
-    }
-    #endregion
-
-    #region ScriptResults declaration
-    enum ScriptResults
-    {
-        Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
-        Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
-    };
-    #endregion
 }
