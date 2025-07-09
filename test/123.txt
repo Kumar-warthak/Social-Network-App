@@ -1,50 +1,98 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
 using System.Web.Script.Serialization;
+using System.Collections.Generic;
 
-public static class SharePointUserHelper
+namespace SharePointUserFetch
 {
-    public static string GetAllSharePointUsersAsJson(string siteUrl, string accessToken, string proxyUrl = null)
+    class Program
     {
-        string url = $"{siteUrl}/_api/web/siteusers";
-
-        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-        request.Method = "GET";
-        request.Accept = "application/json;odata=verbose";
-        request.Headers.Add("Authorization", "Bearer " + accessToken);
-
-        if (!string.IsNullOrEmpty(proxyUrl))
-            request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
-
-        using (WebResponse response = request.GetResponse())
-        using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+        static void Main()
         {
-            string json = reader.ReadToEnd();
+            string tenantId = "your-tenant-id";
+            string clientId = "your-client-id";
+            string clientSecret = "your-client-secret";
+            string siteUrl = "https://yourtenant.sharepoint.com/sites/yoursite"; // No trailing slash
 
-            // Optionally clean up @odata properties (if needed)
-            JavaScriptSerializer serializer = new JavaScriptSerializer();
-            var outer = serializer.Deserialize<Dictionary<string, object>>(json);
-            var d = (Dictionary<string, object>)outer["d"];
-            var users = (object[])d["results"];
-
-            List<Dictionary<string, object>> cleanUsers = new List<Dictionary<string, object>>();
-
-            foreach (Dictionary<string, object> user in users)
+            try
             {
-                // Exclude @odata fields
-                Dictionary<string, object> cleaned = new Dictionary<string, object>();
-                foreach (var kv in user)
-                {
-                    if (!kv.Key.StartsWith("__") && !kv.Key.StartsWith("odata"))
-                        cleaned[kv.Key] = kv.Value;
-                }
-                cleanUsers.Add(cleaned);
-            }
+                string token = GetAccessTokenForSharePoint(tenantId, clientId, clientSecret);
+                string usersJson = GetAllSharePointUsersAsJson(siteUrl, token);
 
-            return serializer.Serialize(cleanUsers);
+                Console.WriteLine("All SharePoint Users:\n" + usersJson);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+            }
+        }
+
+        public static string GetAccessTokenForSharePoint(string tenantId, string clientId, string clientSecret)
+        {
+            string resource = "00000003-0000-0ff1-ce00-000000000000"; // SharePoint resource
+            string url = $"https://accounts.accesscontrol.windows.net/{tenantId}/tokens/OAuth/2";
+
+            string postBody = $"grant_type=client_credentials" +
+                              $"&client_id={clientId}@{tenantId}" +
+                              $"&client_secret={Uri.EscapeDataString(clientSecret)}" +
+                              $"&resource={resource}/{Uri.EscapeDataString("yourtenant.sharepoint.com")}@{tenantId}";
+
+            byte[] postData = Encoding.UTF8.GetBytes(postBody);
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = "POST";
+            request.ContentType = "application/x-www-form-urlencoded";
+            request.ContentLength = postData.Length;
+
+            using (Stream stream = request.GetRequestStream())
+                stream.Write(postData, 0, postData.Length);
+
+            using (WebResponse response = request.GetResponse())
+            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+            {
+                string json = reader.ReadToEnd();
+                JavaScriptSerializer serializer = new JavaScriptSerializer();
+                var dict = serializer.Deserialize<Dictionary<string, object>>(json);
+                return dict["access_token"].ToString();
+            }
+        }
+
+        public static string GetAllSharePointUsersAsJson(string siteUrl, string accessToken)
+        {
+            string url = $"{siteUrl}/_api/web/siteusers";
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = "GET";
+            request.Accept = "application/json;odata=verbose";
+            request.Headers.Add("Authorization", "Bearer " + accessToken);
+
+            using (WebResponse response = request.GetResponse())
+            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+            {
+                string json = reader.ReadToEnd();
+
+                JavaScriptSerializer serializer = new JavaScriptSerializer();
+                var outer = serializer.Deserialize<Dictionary<string, object>>(json);
+                var d = (Dictionary<string, object>)outer["d"];
+                var users = (object[])d["results"];
+
+                List<Dictionary<string, object>> cleanUsers = new List<Dictionary<string, object>>();
+
+                foreach (Dictionary<string, object> user in users)
+                {
+                    Dictionary<string, object> cleaned = new Dictionary<string, object>();
+                    foreach (var kv in user)
+                    {
+                        if (!kv.Key.StartsWith("__") && !kv.Key.StartsWith("odata"))
+                            cleaned[kv.Key] = kv.Value;
+                    }
+                    cleanUsers.Add(cleaned);
+                }
+
+                return serializer.Serialize(cleanUsers);
+            }
         }
     }
 }
