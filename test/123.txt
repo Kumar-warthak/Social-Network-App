@@ -1,94 +1,95 @@
+import requests
+import json
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Net;
-using System.Text;
-using System.Web.Script.Serialization;
+# --- Configuration ---
+TENANT_ID = "YOUR_TENANT_ID"
+CLIENT_ID = "YOUR_CLIENT_ID"
+CLIENT_SECRET = "YOUR_CLIENT_SECRET"
+SHAREPOINT_HOSTNAME = "yourtenant.sharepoint.com"  # e.g., "contoso.sharepoint.com"
+SITE_NAME = "YourSiteName"  # The part of the URL after /sites/
+USER_EMAIL = "user@yourtenant.com"
 
-namespace SharePointUserIdFetcher
-{
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            string tenantId = "your-tenant-id";
-            string clientId = "your-client-id";
-            string clientSecret = "your-client-secret";
-            string siteUrl = "https://yourtenant.sharepoint.com/sites/yoursite";
-            string email = "john.doe@yourtenant.com";
-            string proxyUrl = null; // set if needed
+# --- Endpoints ---
+TOKEN_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+GRAPH_API_BASE_URL = "https://graph.microsoft.com/v1.0"
 
-            try
-            {
-                string accessToken = GetSharePointAccessToken(tenantId, clientId, clientSecret, "yourtenant.sharepoint.com", proxyUrl);
-                int sharePointUserId = GetSharePointUserId(siteUrl, accessToken, email, proxyUrl);
-
-                Console.WriteLine("SharePoint User ID for " + email + ": " + sharePointUserId);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("ERROR: " + ex.Message);
-            }
-        }
-
-        static string GetSharePointAccessToken(string tenantId, string clientId, string clientSecret, string resourceHost, string proxyUrl = null)
-        {
-            string tokenUrl = $"https://accounts.accesscontrol.windows.net/{tenantId}/tokens/OAuth/2";
-            string resource = $"00000003-0000-0ff1-ce00-000000000000/{resourceHost}@{tenantId}";
-
-            string postData = $"grant_type=client_credentials&client_id={clientId}@{tenantId}&client_secret={Uri.EscapeDataString(clientSecret)}&resource={resource}";
-            byte[] data = Encoding.UTF8.GetBytes(postData);
-
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(tokenUrl);
-            request.Method = "POST";
-            request.ContentType = "application/x-www-form-urlencoded";
-            request.ContentLength = data.Length;
-
-            if (!string.IsNullOrEmpty(proxyUrl))
-                request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
-
-            using (Stream stream = request.GetRequestStream())
-                stream.Write(data, 0, data.Length);
-
-            using (WebResponse response = request.GetResponse())
-            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
-            {
-                string json = reader.ReadToEnd();
-                var serializer = new JavaScriptSerializer();
-                var tokenData = serializer.Deserialize<Dictionary<string, object>>(json);
-                return tokenData["access_token"].ToString();
-            }
-        }
-
-        static int GetSharePointUserId(string siteUrl, string accessToken, string userEmail, string proxyUrl = null)
-        {
-            string url = $"{siteUrl}/_api/web/ensureuser";
-            string payload = $"{{ \"logonName\": \"{userEmail}\" }}";
-            byte[] byteArray = Encoding.UTF8.GetBytes(payload);
-
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "POST";
-            request.Accept = "application/json;odata=verbose";
-            request.ContentType = "application/json;odata=verbose";
-            request.Headers.Add("Authorization", "Bearer " + accessToken);
-            request.ContentLength = byteArray.Length;
-
-            if (!string.IsNullOrEmpty(proxyUrl))
-                request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
-
-            using (Stream requestStream = request.GetRequestStream())
-                requestStream.Write(byteArray, 0, byteArray.Length);
-
-            using (WebResponse response = request.GetResponse())
-            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
-            {
-                string json = reader.ReadToEnd();
-                JavaScriptSerializer serializer = new JavaScriptSerializer();
-                var outer = serializer.Deserialize<Dictionary<string, object>>(json);
-                var d = (Dictionary<string, object>)outer["d"];
-                return Convert.ToInt32(d["Id"]);
-            }
-        }
+def get_access_token():
+    """Gets an access token from the Microsoft identity platform."""
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    payload = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "scope": "https://graph.microsoft.com/.default",
+        "grant_type": "client_credentials",
     }
-}
+    response = requests.post(TOKEN_URL, headers=headers, data=payload)
+    response.raise_for_status()  # Raises an exception for bad status codes
+    return response.json().get("access_token")
+
+def get_site_id(access_token):
+    """Gets the SharePoint site ID."""
+    site_url = f"{GRAPH_API_BASE_URL}/sites/{SHAREPOINT_HOSTNAME}:/sites/{SITE_NAME}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get(site_url, headers=headers)
+    response.raise_for_status()
+    print("✅ Successfully retrieved Site ID.")
+    return response.json().get("id")
+
+def get_user_info_list_id(access_token, site_id):
+    """Gets the ID of the 'User Information List'."""
+    list_url = f"{GRAPH_API_BASE_URL}/sites/{site_id}/lists"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    params = {"$filter": "displayName eq 'User Information List'"}
+    response = requests.get(list_url, headers=headers, params=params)
+    response.raise_for_status()
+    lists = response.json().get("value")
+    if not lists:
+        raise Exception("User Information List not found.")
+    print("✅ Successfully retrieved User Information List ID.")
+    return lists[0].get("id")
+
+def get_sharepoint_user_id(access_token, site_id, list_id):
+    """Gets the SharePoint-specific user ID from the User Information List."""
+    items_url = f"{GRAPH_API_BASE_URL}/sites/{site_id}/lists/{list_id}/items"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    params = {
+        "$select": "id",
+        "$expand": "fields(select=EMail)",
+        "$filter": f"fields/EMail eq '{USER_EMAIL}'"
+    }
+    response = requests.get(items_url, headers=headers, params=params)
+    response.raise_for_status()
+    items = response.json().get("value")
+    if not items:
+        raise Exception(f"User with email '{USER_EMAIL}' not found in the site's User Information List.")
+    
+    sharepoint_user_id = items[0].get("id")
+    print("✅ Successfully retrieved SharePoint User ID.")
+    return sharepoint_user_id
+
+if __name__ == "__main__":
+    try:
+        print("🚀 Starting the process to fetch SharePoint User ID...")
+        
+        # 1. Get Access Token
+        token = get_access_token()
+        print("✅ Successfully obtained Access Token.")
+        
+        # 2. Get Site ID
+        site_id = get_site_id(token)
+        
+        # 3. Get User Information List ID
+        user_info_list_id = get_user_info_list_id(token, site_id)
+        
+        # 4. Get SharePoint User ID
+        sp_user_id = get_sharepoint_user_id(token, site_id, user_info_list_id)
+        
+        print("\n--- RESULTS ---")
+        print(f"SharePoint User ID for '{USER_EMAIL}' is: {sp_user_id}")
+        print("---------------")
+
+    except requests.exceptions.HTTPError as http_err:
+        print(f"❌ HTTP Error occurred: {http_err}")
+        print(f"Response Body: {http_err.response.text}")
+    except Exception as err:
+        print(f"❌ An error occurred: {err}")
