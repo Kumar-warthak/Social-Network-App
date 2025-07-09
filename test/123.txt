@@ -5,96 +5,88 @@ using System.Net;
 using System.Text;
 using System.Web.Script.Serialization;
 
-namespace SharePointUsersFetcher
+namespace SharePointUserIdFetcher
 {
-    public class Program
+    class Program
     {
-        public static void Main()
+        static void Main(string[] args)
         {
             string tenantId = "your-tenant-id";
             string clientId = "your-client-id";
             string clientSecret = "your-client-secret";
-            string siteDomain = "yourtenant.sharepoint.com";
-            string siteName = "sites/yoursite"; // or use "teams/YourTeamName"
-            string proxyUrl = null; // Optional: "http://yourproxy:port"
+            string siteUrl = "https://yourtenant.sharepoint.com/sites/yoursite";
+            string email = "john.doe@yourtenant.com";
+            string proxyUrl = null; // set if needed
 
             try
             {
-                string token = GetSharePointAccessToken(tenantId, clientId, clientSecret, siteDomain, proxyUrl);
-                string siteUrl = $"https://{siteDomain}/{siteName}";
-                string usersJson = GetSharePointSiteUsersJson(siteUrl, token, proxyUrl);
+                string accessToken = GetSharePointAccessToken(tenantId, clientId, clientSecret, "yourtenant.sharepoint.com", proxyUrl);
+                int sharePointUserId = GetSharePointUserId(siteUrl, accessToken, email, proxyUrl);
 
-                Console.WriteLine("Users JSON:");
-                Console.WriteLine(usersJson);
+                Console.WriteLine("SharePoint User ID for " + email + ": " + sharePointUserId);
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error: " + ex.Message);
+                Console.WriteLine("ERROR: " + ex.Message);
             }
         }
 
-        public static string GetSharePointAccessToken(string tenantId, string clientId, string clientSecret, string siteDomain, string proxyUrl)
+        static string GetSharePointAccessToken(string tenantId, string clientId, string clientSecret, string resourceHost, string proxyUrl = null)
         {
-            string resource = $"00000003-0000-0ff1-ce00-000000000000/{siteDomain}@{tenantId}";
-            string authUrl = $"https://accounts.accesscontrol.windows.net/{tenantId}/tokens/OAuth/2";
-            string postData = $"grant_type=client_credentials&client_id={clientId}@{tenantId}&client_secret={Uri.EscapeDataString(clientSecret)}&resource={Uri.EscapeDataString(resource)}";
+            string tokenUrl = $"https://accounts.accesscontrol.windows.net/{tenantId}/tokens/OAuth/2";
+            string resource = $"00000003-0000-0ff1-ce00-000000000000/{resourceHost}@{tenantId}";
 
-            byte[] byteArray = Encoding.UTF8.GetBytes(postData);
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(authUrl);
+            string postData = $"grant_type=client_credentials&client_id={clientId}@{tenantId}&client_secret={Uri.EscapeDataString(clientSecret)}&resource={resource}";
+            byte[] data = Encoding.UTF8.GetBytes(postData);
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(tokenUrl);
             request.Method = "POST";
             request.ContentType = "application/x-www-form-urlencoded";
-            request.ContentLength = byteArray.Length;
+            request.ContentLength = data.Length;
 
             if (!string.IsNullOrEmpty(proxyUrl))
                 request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
 
             using (Stream stream = request.GetRequestStream())
-                stream.Write(byteArray, 0, byteArray.Length);
+                stream.Write(data, 0, data.Length);
 
             using (WebResponse response = request.GetResponse())
             using (StreamReader reader = new StreamReader(response.GetResponseStream()))
             {
                 string json = reader.ReadToEnd();
                 var serializer = new JavaScriptSerializer();
-                var result = serializer.Deserialize<Dictionary<string, object>>(json);
-                return result["access_token"].ToString();
+                var tokenData = serializer.Deserialize<Dictionary<string, object>>(json);
+                return tokenData["access_token"].ToString();
             }
         }
 
-        public static string GetSharePointSiteUsersJson(string siteUrl, string accessToken, string proxyUrl = null)
+        static int GetSharePointUserId(string siteUrl, string accessToken, string userEmail, string proxyUrl = null)
         {
-            string apiUrl = $"{siteUrl}/_api/web/siteusers";
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(apiUrl);
-            request.Method = "GET";
+            string url = $"{siteUrl}/_api/web/ensureuser";
+            string payload = $"{{ \"logonName\": \"{userEmail}\" }}";
+            byte[] byteArray = Encoding.UTF8.GetBytes(payload);
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = "POST";
             request.Accept = "application/json;odata=verbose";
+            request.ContentType = "application/json;odata=verbose";
             request.Headers.Add("Authorization", "Bearer " + accessToken);
+            request.ContentLength = byteArray.Length;
 
             if (!string.IsNullOrEmpty(proxyUrl))
                 request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
 
-            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            using (Stream requestStream = request.GetRequestStream())
+                requestStream.Write(byteArray, 0, byteArray.Length);
+
+            using (WebResponse response = request.GetResponse())
             using (StreamReader reader = new StreamReader(response.GetResponseStream()))
             {
-                string rawJson = reader.ReadToEnd();
-                var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-                var outer = serializer.Deserialize<Dictionary<string, object>>(rawJson);
+                string json = reader.ReadToEnd();
+                JavaScriptSerializer serializer = new JavaScriptSerializer();
+                var outer = serializer.Deserialize<Dictionary<string, object>>(json);
                 var d = (Dictionary<string, object>)outer["d"];
-                var results = (System.Collections.ArrayList)d["results"];
-
-                var simplifiedUsers = new List<Dictionary<string, object>>();
-
-                foreach (Dictionary<string, object> user in results)
-                {
-                    simplifiedUsers.Add(new Dictionary<string, object>
-                    {
-                        { "Id", user["Id"] },
-                        { "Title", user["Title"] },
-                        { "Email", user["Email"] },
-                        { "LoginName", user["LoginName"] }
-                    });
-                }
-
-                return serializer.Serialize(simplifiedUsers);
+                return Convert.ToInt32(d["Id"]);
             }
         }
     }
