@@ -1,95 +1,172 @@
-import requests
-import json
+#region Namespaces
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Text;
+using Microsoft.SqlServer.Dts.Runtime;
+using System.Web.Script.Serialization; // Added for JSON serialization/deserialization
+#endregion
 
-# --- Configuration ---
-TENANT_ID = "YOUR_TENANT_ID"
-CLIENT_ID = "YOUR_CLIENT_ID"
-CLIENT_SECRET = "YOUR_CLIENT_SECRET"
-SHAREPOINT_HOSTNAME = "yourtenant.sharepoint.com"  # e.g., "contoso.sharepoint.com"
-SITE_NAME = "YourSiteName"  # The part of the URL after /sites/
-USER_EMAIL = "user@yourtenant.com"
+public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
+{
+    /// <summary>
+    /// The main entry point for the Script Task.
+    /// </summary>
+    public void Main()
+    {
+        try
+        {
+            // --- 1. Read SSIS Variables ---
+            string tenantId = Dts.Variables["User::GraphTenantId"].Value.ToString();
+            string clientId = Dts.Variables["User::GraphClientId"].Value.ToString();
+            string clientSecret = Dts.Variables["User::GraphClientSecret"].GetSensitiveValue().ToString();
+            string spHostname = Dts.Variables["User::SharePointHostname"].Value.ToString();
+            string siteName = Dts.Variables["User::SharePointSiteName"].Value.ToString();
+            string userEmail = Dts.Variables["User::UserEmail"].Value.ToString();
 
-# --- Endpoints ---
-TOKEN_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
-GRAPH_API_BASE_URL = "https://graph.microsoft.com/v1.0"
+            // --- 2. Get Access Token ---
+            Dts.Events.FireInformation(0, "Graph API", "Getting access token...", string.Empty, 0, ref Dts.Events.GetFireAgain());
+            string accessToken = GetAccessToken(tenantId, clientId, clientSecret);
 
-def get_access_token():
-    """Gets an access token from the Microsoft identity platform."""
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    payload = {
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "scope": "https://graph.microsoft.com/.default",
-        "grant_type": "client_credentials",
+            // --- 3. Get Site ID ---
+            Dts.Events.FireInformation(0, "Graph API", "Getting SharePoint Site ID...", string.Empty, 0, ref Dts.Events.GetFireAgain());
+            string siteId = GetSiteId(accessToken, spHostname, siteName);
+
+            // --- 4. Get User Information List ID ---
+            Dts.Events.FireInformation(0, "Graph API", "Getting User Information List ID...", string.Empty, 0, ref Dts.Events.GetFireAgain());
+            string listId = GetUserInfoListId(accessToken, siteId);
+
+            // --- 5. Get SharePoint User ID ---
+            Dts.Events.FireInformation(0, "Graph API", "Getting SharePoint User ID for " + userEmail, string.Empty, 0, ref Dts.Events.GetFireAgain());
+            string sharepointUserId = GetSharePointUserId(accessToken, siteId, listId, userEmail);
+
+            // --- 6. Write Result to SSIS Variable ---
+            Dts.Variables["User::SharePointUserID"].Value = sharepointUserId;
+
+            Dts.Events.FireInformation(0, "Graph API", "Successfully retrieved SharePoint User ID: " + sharepointUserId, string.Empty, 0, ref Dts.Events.GetFireAgain());
+            Dts.TaskResult = (int)ScriptResults.Success;
+        }
+        catch (Exception ex)
+        {
+            Dts.Events.FireError(0, "Graph API Error", ex.ToString(), string.Empty, 0);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+        }
     }
-    response = requests.post(TOKEN_URL, headers=headers, data=payload)
-    response.raise_for_status()  # Raises an exception for bad status codes
-    return response.json().get("access_token")
 
-def get_site_id(access_token):
-    """Gets the SharePoint site ID."""
-    site_url = f"{GRAPH_API_BASE_URL}/sites/{SHAREPOINT_HOSTNAME}:/sites/{SITE_NAME}"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    response = requests.get(site_url, headers=headers)
-    response.raise_for_status()
-    print("✅ Successfully retrieved Site ID.")
-    return response.json().get("id")
+    private string GetAccessToken(string tenantId, string clientId, string clientSecret)
+    {
+        string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+        var request = (HttpWebRequest)WebRequest.Create(url);
+        request.Method = "POST";
+        request.ContentType = "application/x-www-form-urlencoded";
 
-def get_user_info_list_id(access_token, site_id):
-    """Gets the ID of the 'User Information List'."""
-    list_url = f"{GRAPH_API_BASE_URL}/sites/{site_id}/lists"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    params = {"$filter": "displayName eq 'User Information List'"}
-    response = requests.get(list_url, headers=headers, params=params)
-    response.raise_for_status()
-    lists = response.json().get("value")
-    if not lists:
-        raise Exception("User Information List not found.")
-    print("✅ Successfully retrieved User Information List ID.")
-    return lists[0].get("id")
+        string postData = $"client_id={clientId}&client_secret={clientSecret}&scope=https://graph.microsoft.com/.default&grant_type=client_credentials";
+        byte[] byteArray = Encoding.UTF8.GetBytes(postData);
+        request.ContentLength = byteArray.Length;
 
-def get_sharepoint_user_id(access_token, site_id, list_id):
-    """Gets the SharePoint-specific user ID from the User Information List."""
-    items_url = f"{GRAPH_API_BASE_URL}/sites/{site_id}/lists/{list_id}/items"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    params = {
-        "$select": "id",
-        "$expand": "fields(select=EMail)",
-        "$filter": f"fields/EMail eq '{USER_EMAIL}'"
+        using (Stream dataStream = request.GetRequestStream())
+        {
+            dataStream.Write(byteArray, 0, byteArray.Length);
+        }
+
+        string responseFromServer = GetResponseFromServer(request);
+        var jss = new JavaScriptSerializer();
+        var tokenResponse = jss.Deserialize<TokenResponse>(responseFromServer);
+        return tokenResponse.AccessToken;
     }
-    response = requests.get(items_url, headers=headers, params=params)
-    response.raise_for_status()
-    items = response.json().get("value")
-    if not items:
-        raise Exception(f"User with email '{USER_EMAIL}' not found in the site's User Information List.")
-    
-    sharepoint_user_id = items[0].get("id")
-    print("✅ Successfully retrieved SharePoint User ID.")
-    return sharepoint_user_id
 
-if __name__ == "__main__":
-    try:
-        print("🚀 Starting the process to fetch SharePoint User ID...")
-        
-        # 1. Get Access Token
-        token = get_access_token()
-        print("✅ Successfully obtained Access Token.")
-        
-        # 2. Get Site ID
-        site_id = get_site_id(token)
-        
-        # 3. Get User Information List ID
-        user_info_list_id = get_user_info_list_id(token, site_id)
-        
-        # 4. Get SharePoint User ID
-        sp_user_id = get_sharepoint_user_id(token, site_id, user_info_list_id)
-        
-        print("\n--- RESULTS ---")
-        print(f"SharePoint User ID for '{USER_EMAIL}' is: {sp_user_id}")
-        print("---------------")
+    private string GetSiteId(string accessToken, string hostname, string siteName)
+    {
+        string url = $"https://graph.microsoft.com/v1.0/sites/{hostname}:/sites/{siteName}";
+        string responseFromServer = MakeGetRequest(url, accessToken);
+        var jss = new JavaScriptSerializer();
+        var siteResponse = jss.Deserialize<GraphObject>(responseFromServer);
+        return siteResponse.Id;
+    }
 
-    except requests.exceptions.HTTPError as http_err:
-        print(f"❌ HTTP Error occurred: {http_err}")
-        print(f"Response Body: {http_err.response.text}")
-    except Exception as err:
-        print(f"❌ An error occurred: {err}")
+    private string GetUserInfoListId(string accessToken, string siteId)
+    {
+        string url = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists?$filter=displayName eq 'User Information List'";
+        string responseFromServer = MakeGetRequest(url, accessToken);
+        var jss = new JavaScriptSerializer();
+        var listCollection = jss.Deserialize<GraphCollection<GraphObject>>(responseFromServer);
+        if (listCollection.Value.Count == 0) throw new Exception("User Information List not found.");
+        return listCollection.Value[0].Id;
+    }
+
+    private string GetSharePointUserId(string accessToken, string siteId, string listId, string userEmail)
+    {
+        string url = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listId}/items?$expand=fields(select=EMail)&$filter=fields/EMail eq '{userEmail}'";
+        string responseFromServer = MakeGetRequest(url, accessToken);
+        var jss = new JavaScriptSerializer();
+        var itemCollection = jss.Deserialize<GraphCollection<GraphObjectWithFields>>(responseFromServer);
+        if (itemCollection.Value.Count == 0) throw new Exception($"User with email '{userEmail}' not found in the site's User Information List.");
+        return itemCollection.Value[0].Id;
+    }
+
+    // Helper method for GET requests
+    private string MakeGetRequest(string url, string accessToken)
+    {
+        var request = (HttpWebRequest)WebRequest.Create(url);
+        request.Method = "GET";
+        request.Headers.Add("Authorization", "Bearer " + accessToken);
+        return GetResponseFromServer(request);
+    }
+
+    // Helper method to read the response stream
+    private string GetResponseFromServer(HttpWebRequest request)
+    {
+        using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+        {
+            // Check for non-successful status codes
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                throw new WebException($"Server returned error: {response.StatusCode} {response.StatusDescription}");
+            }
+
+            using (Stream dataStream = response.GetResponseStream())
+            {
+                using (StreamReader reader = new StreamReader(dataStream))
+                {
+                    return reader.ReadToEnd();
+                }
+            }
+        }
+    }
+
+    #region Helper Classes for JSON Deserialization
+    private class TokenResponse
+    {
+        public string AccessToken { get; set; }
+    }
+
+    private class GraphObject
+    {
+        public string Id { get; set; }
+    }
+
+    private class GraphObjectWithFields : GraphObject
+    {
+        public Fields Fields { get; set; }
+    }
+
+    private class Fields
+    {
+        public string EMail { get; set; }
+    }
+
+    private class GraphCollection<T>
+    {
+        public List<T> Value { get; set; }
+    }
+    #endregion
+
+    #region ScriptResults declaration
+    enum ScriptResults
+    {
+        Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
+        Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
+    };
+    #endregion
+}
