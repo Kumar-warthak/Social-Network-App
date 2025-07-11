@@ -1,29 +1,113 @@
-public static string GetAccessTokenForSharePoint(string tenantId, string clientId, string clientSecret)
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Text;
+using System.Web.Script.Serialization;
+
+namespace SharePointGraphUserLookup
 {
-    string tokenEndpoint = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
-    string scope = $"https://yourtenant.sharepoint.com/.default";  // Replace with your real tenant domain
-
-    string postData = $"grant_type=client_credentials" +
-                      $"&client_id={clientId}" +
-                      $"&client_secret={Uri.EscapeDataString(clientSecret)}" +
-                      $"&scope={Uri.EscapeDataString(scope)}";
-
-    byte[] data = Encoding.UTF8.GetBytes(postData);
-
-    HttpWebRequest request = (HttpWebRequest)WebRequest.Create(tokenEndpoint);
-    request.Method = "POST";
-    request.ContentType = "application/x-www-form-urlencoded";
-    request.ContentLength = data.Length;
-
-    using (Stream stream = request.GetRequestStream())
-        stream.Write(data, 0, data.Length);
-
-    using (WebResponse response = request.GetResponse())
-    using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+    class Program
     {
-        string json = reader.ReadToEnd();
-        var serializer = new JavaScriptSerializer();
-        var dict = serializer.Deserialize<Dictionary<string, object>>(json);
-        return dict["access_token"].ToString();
+        static void Main(string[] args)
+        {
+            string tenantId = "your-tenant-id";
+            string clientId = "your-client-id";
+            string clientSecret = "your-client-secret";
+            string siteName = "yourtenant.sharepoint.com:/sites/yoursite"; // or full Site ID
+            string listName = "YourListName"; // List name or ID
+
+            try
+            {
+                string token = GetGraphAccessToken(tenantId, clientId, clientSecret);
+                GetSharePointListItemsWithUserInfo(token, siteName, listName);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+            }
+        }
+
+        public static string GetGraphAccessToken(string tenantId, string clientId, string clientSecret)
+        {
+            string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+            string postData = $"client_id={clientId}" +
+                              $"&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default" +
+                              $"&client_secret={Uri.EscapeDataString(clientSecret)}" +
+                              $"&grant_type=client_credentials";
+
+            byte[] byteArray = Encoding.UTF8.GetBytes(postData);
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = "POST";
+            request.ContentType = "application/x-www-form-urlencoded";
+            request.ContentLength = byteArray.Length;
+
+            using (Stream dataStream = request.GetRequestStream())
+                dataStream.Write(byteArray, 0, byteArray.Length);
+
+            using (WebResponse response = request.GetResponse())
+            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+            {
+                string jsonResponse = reader.ReadToEnd();
+                JavaScriptSerializer serializer = new JavaScriptSerializer();
+                var tokenData = serializer.Deserialize<Dictionary<string, object>>(jsonResponse);
+                return tokenData["access_token"].ToString();
+            }
+        }
+
+        public static void GetSharePointListItemsWithUserInfo(string token, string siteNameOrId, string listName, string proxyUrl = null)
+        {
+            string listUrl = $"https://graph.microsoft.com/v1.0/sites/{siteNameOrId}/lists/{listName}/items?expand=fields&$top=100";
+            JavaScriptSerializer serializer = new JavaScriptSerializer();
+            string nextUrl = listUrl;
+
+            while (!string.IsNullOrEmpty(nextUrl))
+            {
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextUrl);
+                request.Method = "GET";
+                request.Headers.Add("Authorization", "Bearer " + token);
+
+                if (!string.IsNullOrEmpty(proxyUrl))
+                    request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
+
+                using (WebResponse response = request.GetResponse())
+                using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+                {
+                    string json = reader.ReadToEnd();
+                    var parsed = serializer.Deserialize<Dictionary<string, object>>(json);
+
+                    if (parsed.ContainsKey("value"))
+                    {
+                        var items = (System.Collections.ArrayList)parsed["value"];
+                        foreach (var itemObj in items)
+                        {
+                            var item = (Dictionary<string, object>)itemObj;
+                            var fields = (Dictionary<string, object>)item["fields"];
+
+                            Console.WriteLine("Item ID: " + item["id"]);
+                            Console.WriteLine("Title: " + GetValue(fields, "Title"));
+                            Console.WriteLine("AuthorLookupId: " + GetValue(fields, "AuthorLookupId"));
+
+                            if (fields.ContainsKey("Author") && fields["Author"] is Dictionary<string, object> author)
+                            {
+                                Console.WriteLine("Author Name: " + GetValue(author, "displayName"));
+                                Console.WriteLine("Author Email: " + GetValue(author, "email"));
+                                Console.WriteLine("Author Azure AD ID: " + GetValue(author, "id"));
+                            }
+
+                            Console.WriteLine("-------------------------------------");
+                        }
+                    }
+
+                    nextUrl = parsed.ContainsKey("@odata.nextLink") ? parsed["@odata.nextLink"].ToString() : null;
+                }
+            }
+        }
+
+        private static string GetValue(Dictionary<string, object> dict, string key)
+        {
+            return dict.ContainsKey(key) ? dict[key]?.ToString() : "";
+        }
     }
 }
