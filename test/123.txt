@@ -1,87 +1,77 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
 using System.Net;
+using System.IO;
 using System.Text;
 using System.Web.Script.Serialization;
+using System.Collections.Generic;
 
-namespace SharePointGraphListRead
+namespace SharePointGraphExample
 {
     class Program
     {
-        static void Main(string[] args)
+        static void Main()
         {
             string tenantId = "your-tenant-id";
             string clientId = "your-client-id";
             string clientSecret = "your-client-secret";
-            string sitePath = "yourtenant.sharepoint.com:/sites/yoursite"; // Friendly site path
-            string listName = "YourListName"; // Internal list name or GUID
+            string siteId = "your-site-id";              // Use Graph site ID (not SharePoint URL)
+            string listId = "your-list-id-or-name";      // Can use name or list GUID
+            string proxyUrl = null;                      // Optional: "http://your-proxy:port"
 
             try
             {
                 string token = GetGraphAccessToken(tenantId, clientId, clientSecret);
-                string siteId = GetSiteId(token, sitePath);
-                FetchListItems(token, siteId, listName);
+                string json = GetListItemsWithPersonFields(siteId, listId, token, proxyUrl);
+                Console.WriteLine(json);
             }
             catch (Exception ex)
             {
-                Console.WriteLine("ERROR: " + ex.Message);
+                Console.WriteLine("Error: " + ex.Message);
             }
         }
 
         public static string GetGraphAccessToken(string tenantId, string clientId, string clientSecret)
         {
-            string tokenEndpoint = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
-            string body = $"client_id={clientId}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret={Uri.EscapeDataString(clientSecret)}&grant_type=client_credentials";
+            string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+            string postData = $"client_id={clientId}" +
+                              $"&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default" +
+                              $"&client_secret={Uri.EscapeDataString(clientSecret)}" +
+                              $"&grant_type=client_credentials";
 
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(tokenEndpoint);
+            byte[] byteArray = Encoding.UTF8.GetBytes(postData);
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
             request.Method = "POST";
             request.ContentType = "application/x-www-form-urlencoded";
-            byte[] bytes = Encoding.UTF8.GetBytes(body);
-            request.ContentLength = bytes.Length;
+            request.ContentLength = byteArray.Length;
 
             using (Stream stream = request.GetRequestStream())
-                stream.Write(bytes, 0, bytes.Length);
+                stream.Write(byteArray, 0, byteArray.Length);
 
             using (WebResponse response = request.GetResponse())
             using (StreamReader reader = new StreamReader(response.GetResponseStream()))
             {
-                string json = reader.ReadToEnd();
-                JavaScriptSerializer js = new JavaScriptSerializer();
-                Dictionary<string, object> dict = js.Deserialize<Dictionary<string, object>>(json);
-                return dict["access_token"].ToString();
+                string result = reader.ReadToEnd();
+                var serializer = new JavaScriptSerializer();
+                var tokenResult = serializer.Deserialize<Dictionary<string, object>>(result);
+                return tokenResult["access_token"].ToString();
             }
         }
 
-        public static string GetSiteId(string token, string sitePath)
+        public static string GetListItemsWithPersonFields(string siteId, string listId, string token, string proxyUrl = null)
         {
-            string url = $"https://graph.microsoft.com/v1.0/sites/{sitePath}";
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "GET";
-            request.Headers.Add("Authorization", "Bearer " + token);
-
-            using (WebResponse response = request.GetResponse())
-            using (StreamReader reader = new StreamReader(response.GetResponseStream()))
-            {
-                string json = reader.ReadToEnd();
-                JavaScriptSerializer js = new JavaScriptSerializer();
-                var result = js.Deserialize<Dictionary<string, object>>(json);
-                return result["id"].ToString(); // This is your siteId
-            }
-        }
-
-        public static void FetchListItems(string token, string siteId, string listName)
-        {
-            string url = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listName}/items?expand=fields&$top=100";
-            JavaScriptSerializer serializer = new JavaScriptSerializer();
-            string nextUrl = url;
+            string nextUrl = $"https://graph.microsoft.com/v1.0/sites/{siteId}/lists/{listId}/items?$expand=fields&$top=999";
+            JavaScriptSerializer serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+            List<object> allItems = new List<object>();
 
             while (!string.IsNullOrEmpty(nextUrl))
             {
                 HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextUrl);
                 request.Method = "GET";
                 request.Headers.Add("Authorization", "Bearer " + token);
+                request.Accept = "application/json";
+
+                if (!string.IsNullOrEmpty(proxyUrl))
+                    request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
 
                 using (WebResponse response = request.GetResponse())
                 using (StreamReader reader = new StreamReader(response.GetResponseStream()))
@@ -91,61 +81,22 @@ namespace SharePointGraphListRead
 
                     if (parsed.ContainsKey("value"))
                     {
-                        var items = (ArrayList)parsed["value"];
-                        foreach (Dictionary<string, object> item in items)
+                        var items = (System.Collections.ArrayList)parsed["value"];
+                        foreach (var item in items)
                         {
-                            var fields = (Dictionary<string, object>)item["fields"];
-                            Console.WriteLine("Item ID: " + item["id"]);
-
-                            foreach (var field in fields)
+                            var dict = item as Dictionary<string, object>;
+                            if (dict != null && dict.ContainsKey("fields"))
                             {
-                                Console.WriteLine($"{field.Key}: {field.Value}");
+                                allItems.Add(dict["fields"]);
                             }
-
-                            // If AuthorLookupId exists, fetch user details
-                            if (fields.ContainsKey("AuthorLookupId"))
-                            {
-                                string userId = fields["AuthorLookupId"].ToString();
-                                GetUserFromLookupId(token, siteId, userId);
-                            }
-
-                            Console.WriteLine("------------------------------");
                         }
                     }
 
                     nextUrl = parsed.ContainsKey("@odata.nextLink") ? parsed["@odata.nextLink"].ToString() : null;
                 }
             }
-        }
 
-        public static void GetUserFromLookupId(string token, string siteId, string userId)
-        {
-            string url = $"https://graph.microsoft.com/v1.0/sites/{siteId}/users/{userId}";
-
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "GET";
-            request.Headers.Add("Authorization", "Bearer " + token);
-            request.Accept = "application/json";
-
-            try
-            {
-                using (WebResponse response = request.GetResponse())
-                using (StreamReader reader = new StreamReader(response.GetResponseStream()))
-                {
-                    string json = reader.ReadToEnd();
-                    JavaScriptSerializer js = new JavaScriptSerializer();
-                    var user = js.Deserialize<Dictionary<string, object>>(json);
-
-                    Console.WriteLine("User Details for AuthorLookupId:");
-                    Console.WriteLine("  ID: " + user["id"]);
-                    Console.WriteLine("  Display Name: " + user["displayName"]);
-                    Console.WriteLine("  Email: " + user["email"]);
-                }
-            }
-            catch (WebException ex)
-            {
-                Console.WriteLine("Unable to fetch user details for LookupId " + userId);
-            }
+            return serializer.Serialize(allItems);
         }
     }
 }
