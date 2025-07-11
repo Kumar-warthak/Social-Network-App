@@ -1,42 +1,29 @@
-public List<object> GetAllAzureUsersAsObjectList(string token, string proxyUrl = null)
+public static string GetAccessTokenForSharePoint(string tenantId, string clientId, string clientSecret)
 {
-    string baseUrl = "https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName&$top=999";
-    var allUsers = new List<object>();
-    var serializer = new JavaScriptSerializer();
+    string tokenEndpoint = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+    string scope = $"https://yourtenant.sharepoint.com/.default";  // Replace with your real tenant domain
 
-    string nextUrl = baseUrl;
+    string postData = $"grant_type=client_credentials" +
+                      $"&client_id={clientId}" +
+                      $"&client_secret={Uri.EscapeDataString(clientSecret)}" +
+                      $"&scope={Uri.EscapeDataString(scope)}";
 
-    while (!string.IsNullOrEmpty(nextUrl))
+    byte[] data = Encoding.UTF8.GetBytes(postData);
+
+    HttpWebRequest request = (HttpWebRequest)WebRequest.Create(tokenEndpoint);
+    request.Method = "POST";
+    request.ContentType = "application/x-www-form-urlencoded";
+    request.ContentLength = data.Length;
+
+    using (Stream stream = request.GetRequestStream())
+        stream.Write(data, 0, data.Length);
+
+    using (WebResponse response = request.GetResponse())
+    using (StreamReader reader = new StreamReader(response.GetResponseStream()))
     {
-        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextUrl);
-        request.Method = "GET";
-        request.Headers.Add("Authorization", "Bearer " + token);
-
-        if (!string.IsNullOrEmpty(proxyUrl))
-            request.Proxy = new WebProxy(proxyUrl) { Credentials = CredentialCache.DefaultCredentials };
-
-        using (WebResponse response = request.GetResponse())
-        using (StreamReader reader = new StreamReader(response.GetResponseStream()))
-        {
-            string json = reader.ReadToEnd();
-            var parsed = serializer.Deserialize<Dictionary<string, object>>(json);
-
-            if (parsed.ContainsKey("value"))
-            {
-                var users = (System.Collections.ArrayList)parsed["value"];
-                foreach (var user in users)
-                {
-                    // Optional: remove @odata.etag if needed
-                    if (user is Dictionary<string, object> userDict)
-                        userDict.Remove("@odata.etag");
-
-                    allUsers.Add(user);
-                }
-            }
-
-            nextUrl = parsed.ContainsKey("@odata.nextLink") ? parsed["@odata.nextLink"].ToString() : null;
-        }
+        string json = reader.ReadToEnd();
+        var serializer = new JavaScriptSerializer();
+        var dict = serializer.Deserialize<Dictionary<string, object>>(json);
+        return dict["access_token"].ToString();
     }
-
-    return allUsers;
 }
