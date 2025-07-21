@@ -2,49 +2,51 @@ using System;
 using System.IO;
 using System.Net;
 using Microsoft.SqlServer.Dts.Runtime;
-using System.Windows.Forms;
 
 [Microsoft.SqlServer.Dts.Tasks.ScriptTask.SSISScriptTaskEntryPoint]
-public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
+public partial class ScriptMain : VSTARTScriptObjectModelBase
 {
-    // Set these from SSIS Variables or hardcoded
-    private static string siteUrl = "https://yourtenant.sharepoint.com/sites/yoursite"; // CHANGE THIS
-    private static string accessToken = "YOUR_ACCESS_TOKEN"; // Can be pulled from SSIS variable
-
     public void Main()
     {
         try
         {
-            string json = GetSiteUsers();
-            Dts.Variables["User::SiteUsersJson"].Value = json;  // Optional: store in variable
-            MessageBox.Show("Users fetched successfully.");
+            // Replace with your actual site URL and token from variable
+            string siteUrl = "https://yourtenant.sharepoint.com/sites/yoursite"; // << CHANGE THIS
+            string accessToken = Dts.Variables["User::AccessToken"].Value.ToString(); // Token from SSIS variable
+
+            string json = GetSiteUsersAsJson(siteUrl, accessToken);
+
+            // Optional: save JSON string to SSIS variable
+            Dts.Variables["User::SiteUsersJson"].Value = json;
+
+            // Output to console (visible in Debug/SSDT output)
+            Console.WriteLine(json);
+
             Dts.TaskResult = (int)ScriptResults.Success;
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Error: " + ex.Message);
+            Console.WriteLine("Error: " + ex.Message);
             Dts.TaskResult = (int)ScriptResults.Failure;
         }
     }
 
-    private static string GetSiteUsers()
+    private string GetSiteUsersAsJson(string siteUrl, string token)
     {
-        string endpoint = $"{siteUrl}/_api/web/siteusers";
-        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(endpoint);
+        string url = $"{siteUrl}/_api/web/siteusers";
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
         request.Method = "GET";
-        request.Accept = "application/json;odata=verbose";
-        request.Headers.Add("Authorization", "Bearer " + accessToken);
+        request.Accept = "application/json;odata=nometadata";
+        request.Headers.Add("Authorization", "Bearer " + token);
 
         using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
         {
             if (response.StatusCode != HttpStatusCode.OK)
-                throw new ApplicationException($"HTTP error: {response.StatusCode}");
+                throw new Exception("HTTP error: " + response.StatusCode);
 
             using (StreamReader reader = new StreamReader(response.GetResponseStream()))
             {
-                string json = reader.ReadToEnd();
-                Console.WriteLine(json); // For Output Window
-                return json;
+                return reader.ReadToEnd(); // ✅ Full JSON as string
             }
         }
     }
