@@ -1,1 +1,58 @@
-window\.dremioConfig\s*=\s*JSON\.parse\('(.+?)'\)
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using Microsoft.SqlServer.Dts.Runtime;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+[Microsoft.SqlServer.Dts.Tasks.ScriptTask.SSISScriptTaskEntryPoint]
+public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
+{
+    // === CONFIGURATION ===
+    private static string siteUrl = "https://yourtenant.sharepoint.com/sites/yoursite"; // Change this
+    private static string accessToken = "YOUR_ACCESS_TOKEN"; // Pass from SSIS variable securely
+
+    public void Main()
+    {
+        try
+        {
+            var result = GetSiteUsers().GetAwaiter().GetResult();
+            Dts.Variables["User::SiteUsersJson"].Value = result; // Optional: store JSON in SSIS variable
+            MessageBox.Show("Users fetched successfully. See Output window or variable.");
+            Dts.TaskResult = (int)ScriptResults.Success;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Error: " + ex.Message);
+            Dts.TaskResult = (int)ScriptResults.Failure;
+        }
+    }
+
+    private static async Task<string> GetSiteUsers()
+    {
+        using (HttpClient client = new HttpClient())
+        {
+            // Add headers
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            // Call SharePoint REST API
+            string endpoint = $"{siteUrl}/_api/web/siteusers";
+            HttpResponseMessage response = await client.GetAsync(endpoint);
+
+            string json = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"Error: {response.StatusCode}\n{json}");
+
+            Console.WriteLine(json); // For debug output
+            return json;
+        }
+    }
+
+    enum ScriptResults
+    {
+        Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
+        Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
+    }
+}
