@@ -1,72 +1,36 @@
 import requests
 import pandas as pd
-from msal import ConfidentialClientApplication
 
-# Config
-client_id = "YOUR_CLIENT_ID"
-client_secret = "YOUR_CLIENT_SECRET"
-tenant_id = "YOUR_TENANT_ID"
-site_hostname = "yourdomain.sharepoint.com"
-site_path = "/sites/yoursite"
-list_name = "YourListName"
-
-# Get token
-authority = f"https://login.microsoftonline.com/{tenant_id}"
-app = ConfidentialClientApplication(
-    client_id, authority=authority, client_credential=client_secret
-)
-token_response = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
-access_token = token_response["access_token"]
-headers = {"Authorization": f"Bearer {access_token}"}
-
-# Get site ID
-site_url = f"https://graph.microsoft.com/v1.0/sites/{site_hostname}:{site_path}"
-site_id = requests.get(site_url, headers=headers).json()["id"]
-
-# Get list ID
-lists_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists"
-lists = requests.get(lists_url, headers=headers).json()["value"]
-list_id = next((lst["id"] for lst in lists if lst["name"] == list_name), None)
-
-# Fetch all list items with fields
 items = []
-url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{list_id}/items?$expand=fields&$top=100"
+next_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{list_id}/items?$expand=fields&$top=100"
 
-while url:
-    response = requests.get(url, headers=headers)
+while next_url:
+    response = requests.get(next_url, headers=headers)
+    response.raise_for_status()
     data = response.json()
     for item in data.get("value", []):
-        row = item["fields"]
-
-        # Flatten known lookup/person fields
+        row = item.get("fields", {}).copy()
         for k, v in list(row.items()):
-            if isinstance(v, dict):
-                # Flatten person or lookup field
-                if "email" in v:
-                    row[k + "_email"] = v.get("email")
-                if "displayName" in v:
-                    row[k + "_name"] = v.get("displayName")
-                if "title" in v:
-                    row[k + "_title"] = v.get("title")
-                # Optionally remove the original ID field
-                del row[k]
-            elif isinstance(v, list):
-                # For multi-lookup or multi-person
+            # Flatten person/lookup fields with list of dicts
+            if isinstance(v, list):
                 names = []
                 for entry in v:
                     if isinstance(entry, dict):
-                        names.append(entry.get("displayName") or entry.get("title") or entry.get("email"))
-                    else:
-                        names.append(str(entry))
+                        name = entry.get("lookupValue") or entry.get("displayName") or entry.get("title") or entry.get("email")
+                        if name:
+                            names.append(str(name))
                 row[k + "_names"] = ", ".join(names)
                 del row[k]
-
+            # Flatten single person/lookup object
+            elif isinstance(v, dict):
+                name = v.get("lookupValue") or v.get("displayName") or v.get("title") or v.get("email")
+                if name:
+                    row[k + "_name"] = str(name)
+                    del row[k]
         items.append(row)
+    next_url = data.get("@odata.nextLink")
 
-    url = data.get("@odata.nextLink")
-
-# Save to DataFrame
+# Save to DataFrame and CSV
 df = pd.DataFrame(items)
-df.to_csv("sharepoint_list_flattened.csv", index=False)
-
-print(f"✅ Exported {len(df)} flattened items to 'sharepoint_list_flattened.csv'")
+df.to_csv("sharepoint_list_items.csv", index=False)
+print("✅ Data written to sharepoint_list_items.csv")
