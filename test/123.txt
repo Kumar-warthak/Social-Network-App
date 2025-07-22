@@ -1,7 +1,8 @@
 import requests
+import pandas as pd
 from msal import ConfidentialClientApplication
 
-# Your config values
+# Config
 client_id = "YOUR_CLIENT_ID"
 client_secret = "YOUR_CLIENT_SECRET"
 tenant_id = "YOUR_TENANT_ID"
@@ -27,14 +28,45 @@ lists_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists"
 lists = requests.get(lists_url, headers=headers).json()["value"]
 list_id = next((lst["id"] for lst in lists if lst["name"] == list_name), None)
 
-# Get all list items with pagination
+# Fetch all list items with fields
 items = []
 url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{list_id}/items?$expand=fields&$top=100"
 
 while url:
     response = requests.get(url, headers=headers)
     data = response.json()
-    items.extend([i["fields"] for i in data.get("value", [])])
-    url = data.get("@odata.nextLink")  # This is the key to pagination!
+    for item in data.get("value", []):
+        row = item["fields"]
 
-print(f"Total items fetched: {len(items)}")
+        # Flatten known lookup/person fields
+        for k, v in list(row.items()):
+            if isinstance(v, dict):
+                # Flatten person or lookup field
+                if "email" in v:
+                    row[k + "_email"] = v.get("email")
+                if "displayName" in v:
+                    row[k + "_name"] = v.get("displayName")
+                if "title" in v:
+                    row[k + "_title"] = v.get("title")
+                # Optionally remove the original ID field
+                del row[k]
+            elif isinstance(v, list):
+                # For multi-lookup or multi-person
+                names = []
+                for entry in v:
+                    if isinstance(entry, dict):
+                        names.append(entry.get("displayName") or entry.get("title") or entry.get("email"))
+                    else:
+                        names.append(str(entry))
+                row[k + "_names"] = ", ".join(names)
+                del row[k]
+
+        items.append(row)
+
+    url = data.get("@odata.nextLink")
+
+# Save to DataFrame
+df = pd.DataFrame(items)
+df.to_csv("sharepoint_list_flattened.csv", index=False)
+
+print(f"✅ Exported {len(df)} flattened items to 'sharepoint_list_flattened.csv'")
