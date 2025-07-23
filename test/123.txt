@@ -6,9 +6,14 @@ class Program
 {
     static void Main()
     {
-        string accessToken = "YOUR_ACCESS_TOKEN"; // Replace with actual token
+        string accessToken = "YOUR_ACCESS_TOKEN"; // Replace with valid token
         string url = "https://graph.microsoft.com/v1.0/sites/company.com,tenantId,siteId/lists/01234567-89ab-cdef-0123-456789abcdef/items?$expand=fields";
 
+        GetListItemsFromGraph(url, accessToken);
+    }
+
+    static void GetListItemsFromGraph(string url, string accessToken)
+    {
         try
         {
             WebRequest request = WebRequest.Create(url);
