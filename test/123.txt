@@ -15,10 +15,8 @@ The solution is feasible using GPT-based APIs and SQL parsers. A basic prototype
 
 Let me know if you want a one-slide version of this!
 
+curl -X POST http://127.0.0.1:5000/analyze-sql -H "Content-Type: application/json" -d "{\"query\": \"select from table\"}"
 
-curl -X POST http://127.0.0.1:5000/analyze-sql \
-     -H "Content-Type: application/json" \
-     -d '{"query": "SELECT u.name, o.amount FROM users u JOIN orders o ON u.id = o.user_id WHERE o.status = '\''shipped'\''"}
 
 
 
