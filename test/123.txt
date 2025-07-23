@@ -1,33 +1,49 @@
-🛑 Problem
-SQL logic behind reports is often unclear to business users, leading to frequent support queries and reduced trust in data. Manual documentation is time-consuming, inconsistent, and rarely updated. This creates a communication gap between data teams and stakeholders, slowing decision-making and increasing operational overhead.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SQL Query Analyzer UI</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    textarea { width: 100%; height: 100px; }
+    pre { background: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>SQL Query Analyzer</h2>
 
-💡 Solution
-Use LLMs to automatically generate plain-language summaries of SQL queries powering dashboards. These AI-generated explanations clarify joins, filters, and logic, making data more accessible. Summaries can be embedded into reports or exported as documentation, reducing manual effort and improving understanding for both technical and business users.
+  <form id="sqlForm">
+    <label for="query">Enter your SQL query:</label><br>
+    <textarea id="query" placeholder="SELECT * FROM your_table;"></textarea><br><br>
+    <button type="submit">Analyze</button>
+  </form>
 
-✅ Benefits
-LLM-powered SQL summarization improves data transparency, reduces documentation time by 70–80%, and cuts support queries by up to 50%. It accelerates onboarding, enhances audit readiness, and supports self-service BI. Overall, it increases productivity and builds trust between analytics teams and business stakeholders.
+  <h3>Analysis Result:</h3>
+  <pre id="result">Waiting for result...</pre>
 
-📋 Details
-The system uses an LLM to interpret SQL queries and produce natural-language summaries. Input can be raw SQL or extracted from BI tools. Summaries highlight selected fields, joins, and filters, and can be displayed in dashboards, metadata, or documentation. Integration is flexible via API, UI, or scripts.
+  <script>
+    document.getElementById('sqlForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
 
-🔧 Feasibility
-The solution is feasible using GPT-based APIs and SQL parsers. A basic prototype can be built in weeks with minimal infrastructure. It integrates with existing tools and requires no changes to data sources. Human review ensures quality, and the system is scalable, secure, and cost-effective to maintain.
+      const query = document.getElementById('query').value;
+      const resultBox = document.getElementById('result');
+      resultBox.textContent = 'Analyzing...';
 
-Let me know if you want a one-slide version of this!
+      try {
+        const response = await fetch('http://localhost:5000/analyze-sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query })
+        });
 
-curl -X POST http://127.0.0.1:5000/analyze-sql -H "Content-Type: application/json" -d "{\"query\": \"select from table\"}"
+        if (!response.ok) throw new Error('API error: ' + response.status);
 
-
-
-
-
-
-You said:
-feasibility use this and condense to 50 words Technically, this use case is highly feasible using existing LLM platforms (e.g., OpenAI, Azure OpenAI, AWS Bedrock). SQL parsing and prompt engineering can ensure accurate and context-aware summaries. Integration with BI tools or SQL repositories is achievable via APIs. A small PoC can be built in under 4 weeks with minimal infrastructure, using a Python backend and LLM API calls. Human validation during early phases ensures trust and improvement. Since the approach does not modify data, it poses minimal risk. Costs can be managed with batching or caching, and the system can scale easily with demand.
-
-
-ChatGPT said:
-Certainly! Here's the condensed 50-word feasibility statement:
-
-Feasibility
-This use case is highly feasible using LLM platforms like OpenAI or Azure. SQL parsing with prompt engineering ensures accurate summaries. Integration via APIs is straightforward. A Python-based PoC can be built in under 4 weeks. It’s low-risk, scalable, cost-manageable, and requires minimal infrastructure or data changes.
+        const data = await response.json();
+        resultBox.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        resultBox.textContent = 'Error: ' + error.message;
+      }
+    });
+  </script>
+</body>
+</html>
