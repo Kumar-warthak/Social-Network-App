@@ -6,55 +6,67 @@ class Program
 {
     static void Main()
     {
-        string accessToken = "YOUR_ACCESS_TOKEN"; // Replace with valid token
+        // TODO: supply a valid OAuth 2.0 bearer token for Microsoft Graph
+        string accessToken = "YOUR_ACCESS_TOKEN";
+
+        // Your Graph list items URL with expand=fields
         string url = "https://graph.microsoft.com/v1.0/sites/company.com,tenantId,siteId/lists/01234567-89ab-cdef-0123-456789abcdef/items?$expand=fields";
 
-        GetListItemsFromGraph(url, accessToken);
-    }
-
-    static void GetListItemsFromGraph(string url, string accessToken)
-    {
         try
         {
-            WebRequest request = WebRequest.Create(url);
-            request.Method = "GET";
-            request.Headers.Add("Authorization", "Bearer " + accessToken);
-            request.ContentType = "application/json";
-            request.Headers.Add("Accept", "application/json");
-
-            using (WebResponse response = request.GetResponse())
-            {
-                using (Stream dataStream = response.GetResponseStream())
-                {
-                    if (dataStream == null)
-                    {
-                        Console.WriteLine("No response stream received.");
-                        return;
-                    }
-
-                    using (StreamReader reader = new StreamReader(dataStream))
-                    {
-                        string responseFromServer = reader.ReadToEnd();
-                        Console.WriteLine("✅ JSON Response:");
-                        Console.WriteLine(responseFromServer);
-                    }
-                }
-            }
-        }
-        catch (WebException we)
-        {
-            using (var errorResponse = (HttpWebResponse)we.Response)
-            {
-                using (var reader = new StreamReader(errorResponse.GetResponseStream()))
-                {
-                    string errorText = reader.ReadToEnd();
-                    Console.WriteLine($"❌ Error {errorResponse.StatusCode}: {errorText}");
-                }
-            }
+            string json = GetListItemsFromGraph(url, accessToken);
+            Console.WriteLine("=== Graph List Items JSON ===");
+            Console.WriteLine(json);
         }
         catch (Exception ex)
         {
-            Console.WriteLine("❌ Exception: " + ex.Message);
+            Console.WriteLine("Error: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Calls Microsoft Graph list items endpoint using WebRequest and returns full JSON response.
+    /// </summary>
+    /// <param name="url">Full Graph URL (include $expand=fields if you need person data).</param>
+    /// <param name="accessToken">Bearer token with Sites.Read.All (or higher).</param>
+    /// <param name="proxyUrl">Optional proxy; null to skip.</param>
+    /// <returns>Raw JSON string from Graph.</returns>
+    private static string GetListItemsFromGraph(string url, string accessToken, string proxyUrl = null)
+    {
+        var request = (HttpWebRequest)WebRequest.Create(url);
+        request.Method = "GET";
+        request.Accept = "application/json";
+        request.ContentType = "application/json";
+        request.Headers.Add("Authorization", "Bearer " + accessToken);
+
+        if (!string.IsNullOrEmpty(proxyUrl))
+        {
+            request.Proxy = new WebProxy(proxyUrl, true)
+            {
+                Credentials = CredentialCache.DefaultCredentials
+            };
+        }
+
+        try
+        {
+            using (var response = (HttpWebResponse)request.GetResponse())
+            using (var stream = response.GetResponseStream())
+            using (var reader = new StreamReader(stream ?? Stream.Null))
+            {
+                return reader.ReadToEnd();
+            }
+        }
+        catch (WebException wex)
+        {
+            string detail = "";
+            if (wex.Response != null)
+            {
+                using (var es = wex.Response.GetResponseStream())
+                using (var er = new StreamReader(es ?? Stream.Null))
+                    detail = er.ReadToEnd();
+            }
+            throw new ApplicationException(
+                $"Graph request failed: {wex.Status} {(wex.Response as HttpWebResponse)?.StatusCode}\n{detail}", wex);
         }
     }
 }
