@@ -1,36 +1,55 @@
-import requests
-import pandas as pd
+using System;
+using System.IO;
+using System.Net;
 
-items = []
-next_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{list_id}/items?$expand=fields&$top=100"
+class Program
+{
+    static void Main()
+    {
+        string accessToken = "YOUR_ACCESS_TOKEN"; // Replace with actual token
+        string url = "https://graph.microsoft.com/v1.0/sites/company.com,tenantId,siteId/lists/01234567-89ab-cdef-0123-456789abcdef/items?$expand=fields";
 
-while next_url:
-    response = requests.get(next_url, headers=headers)
-    response.raise_for_status()
-    data = response.json()
-    for item in data.get("value", []):
-        row = item.get("fields", {}).copy()
-        for k, v in list(row.items()):
-            # Flatten person/lookup fields with list of dicts
-            if isinstance(v, list):
-                names = []
-                for entry in v:
-                    if isinstance(entry, dict):
-                        name = entry.get("lookupValue") or entry.get("displayName") or entry.get("title") or entry.get("email")
-                        if name:
-                            names.append(str(name))
-                row[k + "_names"] = ", ".join(names)
-                del row[k]
-            # Flatten single person/lookup object
-            elif isinstance(v, dict):
-                name = v.get("lookupValue") or v.get("displayName") or v.get("title") or v.get("email")
-                if name:
-                    row[k + "_name"] = str(name)
-                    del row[k]
-        items.append(row)
-    next_url = data.get("@odata.nextLink")
+        try
+        {
+            WebRequest request = WebRequest.Create(url);
+            request.Method = "GET";
+            request.Headers.Add("Authorization", "Bearer " + accessToken);
+            request.ContentType = "application/json";
+            request.Headers.Add("Accept", "application/json");
 
-# Save to DataFrame and CSV
-df = pd.DataFrame(items)
-df.to_csv("sharepoint_list_items.csv", index=False)
-print("✅ Data written to sharepoint_list_items.csv")
+            using (WebResponse response = request.GetResponse())
+            {
+                using (Stream dataStream = response.GetResponseStream())
+                {
+                    if (dataStream == null)
+                    {
+                        Console.WriteLine("No response stream received.");
+                        return;
+                    }
+
+                    using (StreamReader reader = new StreamReader(dataStream))
+                    {
+                        string responseFromServer = reader.ReadToEnd();
+                        Console.WriteLine("✅ JSON Response:");
+                        Console.WriteLine(responseFromServer);
+                    }
+                }
+            }
+        }
+        catch (WebException we)
+        {
+            using (var errorResponse = (HttpWebResponse)we.Response)
+            {
+                using (var reader = new StreamReader(errorResponse.GetResponseStream()))
+                {
+                    string errorText = reader.ReadToEnd();
+                    Console.WriteLine($"❌ Error {errorResponse.StatusCode}: {errorText}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("❌ Exception: " + ex.Message);
+        }
+    }
+}
