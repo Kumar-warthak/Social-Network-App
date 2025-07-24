@@ -1,68 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>SQL Query Analysis</title>
-  <style>
-    table, th, td {
-      border: 1px solid black;
-      border-collapse: collapse;
-      padding: 8px;
-    }
-    th {
-      background-color: #f2f2f2;
-    }
-  </style>
+    <title>SQL Query Analysis</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        td, th {
+            border: 1px solid black;
+            padding: 8px;
+            vertical-align: top;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
 </head>
 <body>
-  <h2>SQL Query Analysis</h2>
-  <button onclick="fetchData()">Get SQL Analysis</button>
-  <br><br>
-  <table id="sqlTable">
-    <thead>
-      <tr>
-        <th>Query Logic</th>
-        <th>Schema</th>
-        <th>Table with columns</th>
-        <th>Joins</th>
-        <th>Where Statement</th>
-      </tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
+    <h2>SQL Query Analysis</h2>
+    <table id="sql-table">
+        <thead>
+            <tr>
+                <th>Query Logic</th>
+                <th>Schema</th>
+                <th colspan="2">Table with Columns</th>
+                <th>Joins</th>
+                <th>Where Statement</th>
+            </tr>
+            <tr>
+                <th></th>
+                <th></th>
+                <th>Tables</th>
+                <th>Columns</th>
+                <th></th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="sql-body">
+        </tbody>
+    </table>
 
-  <script>
-    async function fetchData() {
-      const response = await fetch("http://localhost:5000/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ sqldata: "mock" })
-      });
+    <script>
+        fetch('http://localhost:5000/api/sqldata', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: 'sqldata' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            const body = document.getElementById('sql-body');
+            const row = document.createElement('tr');
 
-      const data = await response.json();
+            const logic = document.createElement('td');
+            logic.textContent = data.query_logic;
+            row.appendChild(logic);
 
-      const tableBody = document.getElementById("tableBody");
-      tableBody.innerHTML = ""; // clear any existing rows
+            const schema = document.createElement('td');
+            schema.textContent = data.schema;
+            row.appendChild(schema);
 
-      const tableRows = data.tables.map(t =>
-        `<tr><td colspan="2">${t.table}</td><td colspan="3">${t.columns.join(", ")}</td></tr>`
-      ).join("");
+            // Tables
+            const tables = document.createElement('td');
+            tables.innerHTML = data.tables.map(t => `<div>${t.name}</div>`).join('');
+            row.appendChild(tables);
 
-      const mainRow = `
-        <tr>
-          <td rowspan="${data.tables.length + 1}">${data.queryLogic}</td>
-          <td rowspan="${data.tables.length + 1}">${data.schema}</td>
-          <td colspan="3"></td>
-          <td rowspan="${data.tables.length + 1}">${data.joins}</td>
-          <td rowspan="${data.tables.length + 1}">${data.where}</td>
-        </tr>
-        ${tableRows}
-      `;
+            // Columns
+            const columns = document.createElement('td');
+            columns.innerHTML = data.tables.map(t => `<div>${t.columns.join(', ')}</div>`).join('');
+            row.appendChild(columns);
 
-      tableBody.innerHTML = mainRow;
-    }
-  </script>
+            const joins = document.createElement('td');
+            joins.textContent = data.joins;
+            row.appendChild(joins);
+
+            const where = document.createElement('td');
+            where.textContent = data.where;
+            row.appendChild(where);
+
+            body.appendChild(row);
+        })
+        .catch(err => console.error('API error:', err));
+    </script>
 </body>
 </html>
