@@ -2,89 +2,97 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>SQL Analysis Display</title>
+  <title>SQL Analyzer</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
-    h2 { color: #333; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+    }
+    button {
+      padding: 10px 20px;
+      margin-top: 10px;
+      font-size: 16px;
+    }
+    .output-section {
+      margin-top: 30px;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 20px;
-      background: white;
+      margin-top: 15px;
     }
     th, td {
       border: 1px solid #ccc;
-      padding: 10px;
+      padding: 8px;
       text-align: left;
     }
     th {
-      background-color: #f0f0f0;
-    }
-    .section {
-      margin-bottom: 30px;
-      background: #fff;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      background-color: #f3f3f3;
     }
   </style>
 </head>
 <body>
-  <h2>SQL Analysis Result</h2>
-  <div id="output"></div>
 
-  <script>
-    async function fetchAndDisplay() {
-      const res = await fetch('http://127.0.0.1:5000/analyze-sql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: 'your sql goes here' })
-      });
+<h2>SQL Query Analyzer</h2>
+<form id="queryForm">
+  <label for="sql">Enter SQL Query:</label><br>
+  <textarea id="sql" name="sql" placeholder="SELECT * FROM table_name;"></textarea><br>
+  <button type="submit">Analyze</button>
+</form>
 
-      const data = await res.json();
-      const outputDiv = document.getElementById('output');
+<div class="output-section" id="result"></div>
 
-      data.forEach((item, index) => {
-        // Query Logic and Schema
-        const infoSection = document.createElement('div');
-        infoSection.className = 'section';
-        infoSection.innerHTML = `
-          <h3>Query #${index + 1}</h3>
-          <p><strong>Query Logic:</strong> ${item.queryLogic}</p>
-          <p><strong>Schema:</strong> ${item.schema}</p>
-          <p><strong>Joins:</strong> ${item.joins}</p>
-          <p><strong>Where:</strong> ${item.where}</p>
-        `;
-        outputDiv.appendChild(infoSection);
+<script>
+document.getElementById('queryForm').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  const query = document.getElementById('sql').value;
+  const responseDiv = document.getElementById('result');
+  responseDiv.innerHTML = 'Analyzing...';
 
-        // Tables and Columns
-        const tableSection = document.createElement('div');
-        tableSection.className = 'section';
-        tableSection.innerHTML = `<h4>Tables and Columns</h4>`;
+  try {
+    const res = await fetch('http://127.0.0.1:5000/analyze-sql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query: query })
+    });
 
-        const table = document.createElement('table');
-        table.innerHTML = `
-          <thead>
-            <tr>
-              <th>Table</th>
-              <th>Columns</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${Object.entries(item.tables).map(([tableName, columns]) => `
-              <tr>
-                <td>${tableName}</td>
-                <td>${columns.join(', ')}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        `;
-        tableSection.appendChild(table);
-        outputDiv.appendChild(tableSection);
-      });
+    const data = await res.json();
+
+    if (Array.isArray(data) && data.length > 0) {
+      const obj = data[0];
+
+      let html = `
+        <p><strong>Query Logic:</strong> ${obj.queryLogic}</p>
+        <p><strong>Schema:</strong> ${obj.schema}</p>
+        <p><strong>Joins:</strong> ${obj.joins}</p>
+        <p><strong>Where:</strong> ${obj.where}</p>
+      `;
+
+      if (obj.tables) {
+        html += '<h3>Tables and Columns</h3>';
+        html += '<table><tr><th>Table</th><th>Columns</th></tr>';
+        for (let table in obj.tables) {
+          const cols = obj.tables[table].join(', ');
+          html += `<tr><td>${table}</td><td>${cols}</td></tr>`;
+        }
+        html += '</table>';
+      }
+
+      responseDiv.innerHTML = html;
+    } else {
+      responseDiv.innerHTML = '<p>No structured data returned.</p>';
     }
+  } catch (err) {
+    responseDiv.innerHTML = `<p style="color: red;">Error: ${err.message}</p>`;
+  }
+});
+</script>
 
-    fetchAndDisplay();
-  </script>
 </body>
 </html>
