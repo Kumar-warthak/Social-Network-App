@@ -2,121 +2,89 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>SQL Query Analyzer</title>
+  <title>SQL Analysis Display</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 40px;
-      background-color: #f9f9f9;
-    }
-    h2 {
-      color: #333;
-    }
-    textarea {
-      width: 100%;
-      height: 120px;
-      padding: 10px;
-      font-size: 14px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      resize: vertical;
-    }
-    button {
-      padding: 10px 20px;
-      margin-top: 10px;
-      font-size: 16px;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #0056b3;
-    }
-    #result {
-      margin-top: 30px;
-      font-size: 15px;
-    }
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
+    h2 { color: #333; }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
+      margin-bottom: 20px;
+      background: white;
     }
     th, td {
-      border: 1px solid #ddd;
+      border: 1px solid #ccc;
       padding: 10px;
       text-align: left;
     }
     th {
       background-color: #f0f0f0;
     }
-    .loading {
-      font-style: italic;
-      color: #666;
-    }
-    .error {
-      color: red;
-      font-weight: bold;
-    }
-    .empty {
-      color: #666;
-      font-style: italic;
+    .section {
+      margin-bottom: 30px;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
   </style>
 </head>
 <body>
+  <h2>SQL Analysis Result</h2>
+  <div id="output"></div>
 
-<h2>SQL Query Analyzer</h2>
-<form id="queryForm">
-  <label for="sql">Enter SQL Query:</label><br>
-  <textarea id="sql" name="sql" placeholder="e.g., SELECT * FROM users;"></textarea><br>
-  <button type="submit">Analyze</button>
-</form>
+  <script>
+    async function fetchAndDisplay() {
+      const res = await fetch('http://127.0.0.1:5000/analyze-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'your sql goes here' })
+      });
 
-<div id="result"></div>
+      const data = await res.json();
+      const outputDiv = document.getElementById('output');
 
-<script>
-document.getElementById('queryForm').addEventListener('submit', async function (e) {
-  e.preventDefault();
-  const query = document.getElementById('sql').value.trim();
-  const responseDiv = document.getElementById('result');
+      data.forEach((item, index) => {
+        // Query Logic and Schema
+        const infoSection = document.createElement('div');
+        infoSection.className = 'section';
+        infoSection.innerHTML = `
+          <h3>Query #${index + 1}</h3>
+          <p><strong>Query Logic:</strong> ${item.queryLogic}</p>
+          <p><strong>Schema:</strong> ${item.schema}</p>
+          <p><strong>Joins:</strong> ${item.joins}</p>
+          <p><strong>Where:</strong> ${item.where}</p>
+        `;
+        outputDiv.appendChild(infoSection);
 
-  if (!query) {
-    responseDiv.innerHTML = '<p class="error">Please enter a SQL query.</p>';
-    return;
-  }
+        // Tables and Columns
+        const tableSection = document.createElement('div');
+        tableSection.className = 'section';
+        tableSection.innerHTML = `<h4>Tables and Columns</h4>`;
 
-  responseDiv.innerHTML = '<p class="loading">Analyzing SQL query...</p>';
-
-  try {
-    const res = await fetch('http://127.0.0.1:5000/analyze-sql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: query })
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Server error: ${res.status} - ${text}`);
+        const table = document.createElement('table');
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Table</th>
+              <th>Columns</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.entries(item.tables).map(([tableName, columns]) => `
+              <tr>
+                <td>${tableName}</td>
+                <td>${columns.join(', ')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        `;
+        tableSection.appendChild(table);
+        outputDiv.appendChild(tableSection);
+      });
     }
 
-    const data = await res.json();
-
-    if (Array.isArray(data) && data.length > 0) {
-      const headers = Object.keys(data[0]);
-      let table = '<table><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
-      table += data.map(row => '<tr>' + headers.map(h => `<td>${row[h]}</td>`).join('') + '</tr>').join('');
-      table += '</table>';
-      responseDiv.innerHTML = table;
-    } else {
-      responseDiv.innerHTML = '<p class="empty">No structured data returned.</p>';
-    }
-  } catch (err) {
-    responseDiv.innerHTML = `<p class="error">Error: ${err.message}</p>`;
-  }
-});
-</script>
-
+    fetchAndDisplay();
+  </script>
 </body>
 </html>
