@@ -4,103 +4,65 @@
   <meta charset="UTF-8">
   <title>SQL Query Analysis</title>
   <style>
-    table {
-      width: 100%;
+    table, th, td {
+      border: 1px solid black;
       border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th, td {
-      border: 1px solid #444;
-      padding: 10px;
-      vertical-align: top;
+      padding: 8px;
     }
     th {
       background-color: #f2f2f2;
     }
-    .nested-table {
-      width: 100%;
-      border: none;
-    }
-    .nested-table td, .nested-table th {
-      border: none;
-      padding: 0;
-    }
   </style>
 </head>
 <body>
-
   <h2>SQL Query Analysis</h2>
-
-  <button onclick="fetchData()">Load Data</button>
-
+  <button onclick="fetchData()">Get SQL Analysis</button>
+  <br><br>
   <table id="sqlTable">
     <thead>
       <tr>
-        <th>query Logic</th>
+        <th>Query Logic</th>
         <th>Schema</th>
-        <th colspan="2">Table with Columns</th>
+        <th>Table with columns</th>
         <th>Joins</th>
         <th>Where Statement</th>
       </tr>
-      <tr>
-        <th></th>
-        <th></th>
-        <th>Tables</th>
-        <th>Columns</th>
-        <th></th>
-        <th></th>
-      </tr>
     </thead>
-    <tbody id="sqlBody"></tbody>
+    <tbody id="tableBody"></tbody>
   </table>
 
   <script>
     async function fetchData() {
-      const response = await fetch('http://localhost:5000/sql_analysis', {
-        method: 'POST',
+      const response = await fetch("http://localhost:5000/analyze", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({ sqldata: "your query or ID" })
+        body: JSON.stringify({ sqldata: "mock" })
       });
 
       const data = await response.json();
 
-      const tbody = document.getElementById('sqlBody');
-      tbody.innerHTML = ''; // Clear old data
+      const tableBody = document.getElementById("tableBody");
+      tableBody.innerHTML = ""; // clear any existing rows
 
-      // Assume data is a list of records like mock_sql_analysis.json
-      data.forEach(row => {
-        const tr = document.createElement('tr');
+      const tableRows = data.tables.map(t =>
+        `<tr><td colspan="2">${t.table}</td><td colspan="3">${t.columns.join(", ")}</td></tr>`
+      ).join("");
 
-        const tdLogic = document.createElement('td');
-        tdLogic.textContent = row.query_logic;
-        tr.appendChild(tdLogic);
+      const mainRow = `
+        <tr>
+          <td rowspan="${data.tables.length + 1}">${data.queryLogic}</td>
+          <td rowspan="${data.tables.length + 1}">${data.schema}</td>
+          <td colspan="3"></td>
+          <td rowspan="${data.tables.length + 1}">${data.joins}</td>
+          <td rowspan="${data.tables.length + 1}">${data.where}</td>
+        </tr>
+        ${tableRows}
+      `;
 
-        const tdSchema = document.createElement('td');
-        tdSchema.textContent = row.schema;
-        tr.appendChild(tdSchema);
-
-        const tdTables = document.createElement('td');
-        tdTables.innerHTML = row.table_with_columns.map(t => t.table).join('<br>');
-        tr.appendChild(tdTables);
-
-        const tdColumns = document.createElement('td');
-        tdColumns.innerHTML = row.table_with_columns.map(t => t.columns.join(', ')).join('<br>');
-        tr.appendChild(tdColumns);
-
-        const tdJoins = document.createElement('td');
-        tdJoins.textContent = row.joins;
-        tr.appendChild(tdJoins);
-
-        const tdWhere = document.createElement('td');
-        tdWhere.textContent = row.where_clause;
-        tr.appendChild(tdWhere);
-
-        tbody.appendChild(tr);
-      });
+      tableBody.innerHTML = mainRow;
     }
   </script>
-
 </body>
 </html>
