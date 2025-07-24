@@ -1,29 +1,106 @@
-from flask import Flask, request, jsonify
-import json
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SQL Query Analysis</title>
+  <style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 10px;
+      vertical-align: top;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .nested-table {
+      width: 100%;
+      border: none;
+    }
+    .nested-table td, .nested-table th {
+      border: none;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
 
-app = Flask(__name__)
+  <h2>SQL Query Analysis</h2>
 
-@app.route('/analyze-sql', methods=['POST'])
-def analyze_sql():
-    try:
-        # Get posted JSON body
-        data = request.get_json()
+  <button onclick="fetchData()">Load Data</button>
 
-        # Optional: Log or validate 'sqldata' key (if needed)
-        if 'sqldata' not in data:
-            return jsonify({"error": "'sqldata' key not found in request"}), 400
+  <table id="sqlTable">
+    <thead>
+      <tr>
+        <th>query Logic</th>
+        <th>Schema</th>
+        <th colspan="2">Table with Columns</th>
+        <th>Joins</th>
+        <th>Where Statement</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th></th>
+        <th>Tables</th>
+        <th>Columns</th>
+        <th></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="sqlBody"></tbody>
+  </table>
 
-        # Load JSON content from file
-        with open("mock_sql_analysis.json", "r") as f:
-            mock_data = json.load(f)
+  <script>
+    async function fetchData() {
+      const response = await fetch('http://localhost:5000/sql_analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ sqldata: "your query or ID" })
+      });
 
-        # Return the entire JSON content as response
-        return jsonify(mock_data)
+      const data = await response.json();
 
-    except FileNotFoundError:
-        return jsonify({"error": "mock_sql_analysis.json file not found"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+      const tbody = document.getElementById('sqlBody');
+      tbody.innerHTML = ''; // Clear old data
 
-if __name__ == "__main__":
-    app.run(debug=True)
+      // Assume data is a list of records like mock_sql_analysis.json
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+
+        const tdLogic = document.createElement('td');
+        tdLogic.textContent = row.query_logic;
+        tr.appendChild(tdLogic);
+
+        const tdSchema = document.createElement('td');
+        tdSchema.textContent = row.schema;
+        tr.appendChild(tdSchema);
+
+        const tdTables = document.createElement('td');
+        tdTables.innerHTML = row.table_with_columns.map(t => t.table).join('<br>');
+        tr.appendChild(tdTables);
+
+        const tdColumns = document.createElement('td');
+        tdColumns.innerHTML = row.table_with_columns.map(t => t.columns.join(', ')).join('<br>');
+        tr.appendChild(tdColumns);
+
+        const tdJoins = document.createElement('td');
+        tdJoins.textContent = row.joins;
+        tr.appendChild(tdJoins);
+
+        const tdWhere = document.createElement('td');
+        tdWhere.textContent = row.where_clause;
+        tr.appendChild(tdWhere);
+
+        tbody.appendChild(tr);
+      });
+    }
+  </script>
+
+</body>
+</html>
