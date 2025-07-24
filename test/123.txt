@@ -2,48 +2,78 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>SQL Query Analyzer UI</title>
+  <title>SQL Query Analysis</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    textarea { width: 100%; height: 100px; }
-    pre { background: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; }
+    table, th, td {
+      border: 1px solid black;
+      border-collapse: collapse;
+      padding: 8px;
+      vertical-align: top;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .nested-table {
+      border: none;
+    }
+    .nested-table td {
+      border: none;
+      padding: 2px 4px;
+    }
   </style>
 </head>
 <body>
-  <h2>SQL Query Analyzer</h2>
-
-  <form id="sqlForm">
-    <label for="query">Enter your SQL query:</label><br>
-    <textarea id="query" placeholder="SELECT * FROM your_table;"></textarea><br><br>
-    <button type="submit">Analyze</button>
-  </form>
-
-  <h3>Analysis Result:</h3>
-  <pre id="result">Waiting for result...</pre>
+  <h2>SQL Query Analysis</h2>
+  <div id="table-container"></div>
 
   <script>
-    document.getElementById('sqlForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
+    async function renderSQLAnalysis(query) {
+      const res = await fetch('http://127.0.0.1:5000/analyze-sql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query: query })
+      });
 
-      const query = document.getElementById('query').value;
-      const resultBox = document.getElementById('result');
-      resultBox.textContent = 'Analyzing...';
+      const data = await res.json();
 
-      try {
-        const response = await fetch('http://localhost:5000/analyze-sql', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: query })
-        });
+      const container = document.getElementById('table-container');
 
-        if (!response.ok) throw new Error('API error: ' + response.status);
+      let html = `
+        <table>
+          <tr>
+            <th>Query Logic</th>
+            <th>Schema</th>
+            <th colspan="2">Table with columns</th>
+            <th>Joins</th>
+            <th>Where Statement</th>
+          </tr>
+          <tr>
+            <td rowspan="2">${data.query}</td>
+            <td rowspan="2">${data.schema}</td>
+            <td><b>Tables</b></td>
+            <td><b>Columns</b></td>
+            <td rowspan="2">${data.joins}</td>
+            <td rowspan="2">${data.where}</td>
+          </tr>
+      `;
 
-        const data = await response.json();
-        resultBox.textContent = JSON.stringify(data, null, 2);
-      } catch (error) {
-        resultBox.textContent = 'Error: ' + error.message;
+      for (const table of data.tables) {
+        html += `
+          <tr>
+            <td>${table.name}</td>
+            <td>${table.columns.join(',')}</td>
+          </tr>
+        `;
       }
-    });
+
+      html += `</table>`;
+      container.innerHTML = html;
+    }
+
+    // Replace with your actual query
+    renderSQLAnalysis("SELECT * FROM aaa INNER JOIN bbb ON aaa.id = bbb.id WHERE aaa.id = 1");
   </script>
 </body>
 </html>
