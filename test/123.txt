@@ -4,41 +4,37 @@ app = Flask(__name__)
 
 @app.route('/analyze-sql', methods=['POST'])
 def analyze_sql():
-    try:
-        # Parse JSON payload
-        data = request.get_json()
+    data = request.get_json()
 
-        if not data or 'data_sql' not in data:
-            return jsonify({'error': 'Missing "data_sql" key in JSON'}), 400
+    if not data or "data_sql" not in data:
+        return jsonify({"error": "Missing \"data_sql\" key in JSON"}), 400
 
-        data_sql = data['data_sql']
-        schema = data_sql.get('schema', '')
-        tables = data_sql.get('tables', {})
-        joins = data_sql.get('joins', '')
-        where = data_sql.get('where', '')
+    data_sql = data["data_sql"]
 
-        # Build SELECT clause
-        select_columns = []
-        for table, columns in tables.items():
-            for col in columns:
-                select_columns.append(f"{table}.{col}")
+    schema = data_sql.get("schema", "")
+    tables = data_sql.get("tables", {})
+    joins = data_sql.get("joins", "")
+    where_clause = data_sql.get("where", "")
 
-        select_clause = ', '.join(select_columns)
+    if not tables:
+        return jsonify({"error": "No tables provided"}), 400
 
-        # Build FROM clause using the first table
-        if not tables:
-            return jsonify({'error': 'No tables provided'}), 400
-        from_table = list(tables.keys())[0]
-        from_clause = f"{schema}.{from_table}" if schema else from_table
+    # Build SELECT clause
+    select_fields = []
+    for table, columns in tables.items():
+        for col in columns:
+            select_fields.append(f"{table}.{col}")
+    select_clause = ", ".join(select_fields)
 
-        # Final SQL query
-        where_clause = f"WHERE {where}" if where else ''
-        query = f"SELECT {select_clause} FROM {from_clause} {joins} {where_clause}".strip()
+    # Use first table as base table
+    base_table = list(tables.keys())[0]
+    from_clause = f"{schema}.{base_table}" if schema else base_table
 
-        return jsonify({"query": query})
+    # Build full SQL
+    sql_query = f"SELECT {select_clause} FROM {from_clause}"
+    if joins:
+        sql_query += f" {joins}"
+    if where_clause:
+        sql_query += f" WHERE {where_clause}"
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(debug=True)
+    return jsonify({"query": sql_query})
