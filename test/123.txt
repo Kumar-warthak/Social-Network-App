@@ -1,40 +1,29 @@
 from flask import Flask, request, jsonify
+import json
 
 app = Flask(__name__)
 
 @app.route('/analyze-sql', methods=['POST'])
 def analyze_sql():
-    data = request.get_json()
+    try:
+        # Get posted JSON body
+        data = request.get_json()
 
-    if not data or "data_sql" not in data:
-        return jsonify({"error": "Missing \"data_sql\" key in JSON"}), 400
+        # Optional: Log or validate 'sqldata' key (if needed)
+        if 'sqldata' not in data:
+            return jsonify({"error": "'sqldata' key not found in request"}), 400
 
-    data_sql = data["data_sql"]
+        # Load JSON content from file
+        with open("mock_sql_analysis.json", "r") as f:
+            mock_data = json.load(f)
 
-    schema = data_sql.get("schema", "")
-    tables = data_sql.get("tables", {})
-    joins = data_sql.get("joins", "")
-    where_clause = data_sql.get("where", "")
+        # Return the entire JSON content as response
+        return jsonify(mock_data)
 
-    if not tables:
-        return jsonify({"error": "No tables provided"}), 400
+    except FileNotFoundError:
+        return jsonify({"error": "mock_sql_analysis.json file not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # Build SELECT clause
-    select_fields = []
-    for table, columns in tables.items():
-        for col in columns:
-            select_fields.append(f"{table}.{col}")
-    select_clause = ", ".join(select_fields)
-
-    # Use first table as base table
-    base_table = list(tables.keys())[0]
-    from_clause = f"{schema}.{base_table}" if schema else base_table
-
-    # Build full SQL
-    sql_query = f"SELECT {select_clause} FROM {from_clause}"
-    if joins:
-        sql_query += f" {joins}"
-    if where_clause:
-        sql_query += f" WHERE {where_clause}"
-
-    return jsonify({"query": sql_query})
+if __name__ == "__main__":
+    app.run(debug=True)
