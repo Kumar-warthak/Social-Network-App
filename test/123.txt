@@ -1,57 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>SQL Analyzer</title>
-</head>
-<body>
-  <h1>SQL Query Analyzer</h1>
-
-  <textarea id="queryBox" rows="6" cols="80" placeholder="Enter SQL Query"></textarea><br><br>
-  <button onclick="analyzeQuery()">Analyze SQL</button>
-
-  <div id="outputTable"></div>
-
-  <script>
-    async function analyzeQuery() {
-      const query = document.getElementById("queryBox").value;
-
-      const res = await fetch("http://127.0.0.1:5000/analyze-sql", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ query: query })
-      });
-
-      const output = document.getElementById("outputTable");
-      output.innerHTML = "";
-
-      if (res.ok) {
-        const data = await res.json();
-        const d = data.data_sql;
-
-        let html = `
-          <table border="1" cellpadding="8" cellspacing="0">
-            <tr><th>Query Logic</th><td>${d.queryLogic}</td></tr>
-            <tr><th>Schema</th><td>${d.schema}</td></tr>
-            <tr><th>Joins</th><td>${d.joins}</td></tr>
-            <tr><th>Where</th><td>${d.where}</td></tr>
-            <tr><th>Tables</th><td>
-              <ul>
-                ${Object.entries(d.tables).map(
-                  ([table, columns]) => `<li><b>${table}</b>: ${columns.join(", ")}</li>`
-                ).join("")}
-              </ul>
-            </td></tr>
-          </table>
-        `;
-
-        output.innerHTML = html;
-      } else {
-        output.innerHTML = `<p style="color:red;">${(await res.json()).error}</p>`;
-      }
+{
+    "SELECT a.name, b.salary FROM employees a JOIN salaries b ON a.id = b.emp_id WHERE b.salary > 50000;": {
+        "data_sql": {
+            "queryLogic": "Describes main selection and join",
+            "schema": "your_schema_name",
+            "tables": {
+                "employees": ["name", "id"],
+                "salaries": ["emp_id", "salary"]
+            },
+            "joins": "JOIN on employees.id = salaries.emp_id",
+            "where": "salary > 50000"
+        }
     }
-  </script>
-</body>
-</html>
+}
