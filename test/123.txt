@@ -1,16 +1,44 @@
-{
-    "SELECT a.name, b.salary FROM employees a JOIN salaries b ON a.id = b.emp_id WHERE b.salary > 50000;": {
-        "data_sql": {
-            "queryLogic": "Describes main selection and join",
-            "schema": "your_schema_name",
-            "tables": {
-                "employees": ["name", "id"],
-                "salaries": ["emp_id", "salary"]
-            },
-            "joins": "JOIN on employees.id = salaries.emp_id",
-            "where": "salary > 50000"
-        }
-    }
-}
+from flask import Flask, request, jsonify
 
-curl -X POST http://127.0.0.1:5000/analyze-sql -H "Content-Type: application/json" -d "{\"query\": \"select from table\"}"
+app = Flask(__name__)
+
+@app.route('/analyze-sql', methods=['POST'])
+def analyze_sql():
+    try:
+        # Parse JSON payload
+        data = request.get_json()
+
+        if not data or 'data_sql' not in data:
+            return jsonify({'error': 'Missing "data_sql" key in JSON'}), 400
+
+        data_sql = data['data_sql']
+        schema = data_sql.get('schema', '')
+        tables = data_sql.get('tables', {})
+        joins = data_sql.get('joins', '')
+        where = data_sql.get('where', '')
+
+        # Build SELECT clause
+        select_columns = []
+        for table, columns in tables.items():
+            for col in columns:
+                select_columns.append(f"{table}.{col}")
+
+        select_clause = ', '.join(select_columns)
+
+        # Build FROM clause using the first table
+        if not tables:
+            return jsonify({'error': 'No tables provided'}), 400
+        from_table = list(tables.keys())[0]
+        from_clause = f"{schema}.{from_table}" if schema else from_table
+
+        # Final SQL query
+        where_clause = f"WHERE {where}" if where else ''
+        query = f"SELECT {select_clause} FROM {from_clause} {joins} {where_clause}".strip()
+
+        return jsonify({"query": query})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
