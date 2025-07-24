@@ -2,78 +2,121 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>SQL Query Analysis</title>
+  <title>SQL Query Analyzer</title>
   <style>
-    table, th, td {
-      border: 1px solid black;
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background-color: #f9f9f9;
+    }
+    h2 {
+      color: #333;
+    }
+    textarea {
+      width: 100%;
+      height: 120px;
+      padding: 10px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      resize: vertical;
+    }
+    button {
+      padding: 10px 20px;
+      margin-top: 10px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #result {
+      margin-top: 30px;
+      font-size: 15px;
+    }
+    table {
+      width: 100%;
       border-collapse: collapse;
-      padding: 8px;
-      vertical-align: top;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
     }
     th {
-      background-color: #f2f2f2;
+      background-color: #f0f0f0;
     }
-    .nested-table {
-      border: none;
+    .loading {
+      font-style: italic;
+      color: #666;
     }
-    .nested-table td {
-      border: none;
-      padding: 2px 4px;
+    .error {
+      color: red;
+      font-weight: bold;
+    }
+    .empty {
+      color: #666;
+      font-style: italic;
     }
   </style>
 </head>
 <body>
-  <h2>SQL Query Analysis</h2>
-  <div id="table-container"></div>
 
-  <script>
-    async function renderSQLAnalysis(query) {
-      const res = await fetch('http://127.0.0.1:5000/analyze-sql', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ query: query })
-      });
+<h2>SQL Query Analyzer</h2>
+<form id="queryForm">
+  <label for="sql">Enter SQL Query:</label><br>
+  <textarea id="sql" name="sql" placeholder="e.g., SELECT * FROM users;"></textarea><br>
+  <button type="submit">Analyze</button>
+</form>
 
-      const data = await res.json();
+<div id="result"></div>
 
-      const container = document.getElementById('table-container');
+<script>
+document.getElementById('queryForm').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  const query = document.getElementById('sql').value.trim();
+  const responseDiv = document.getElementById('result');
 
-      let html = `
-        <table>
-          <tr>
-            <th>Query Logic</th>
-            <th>Schema</th>
-            <th colspan="2">Table with columns</th>
-            <th>Joins</th>
-            <th>Where Statement</th>
-          </tr>
-          <tr>
-            <td rowspan="2">${data.query}</td>
-            <td rowspan="2">${data.schema}</td>
-            <td><b>Tables</b></td>
-            <td><b>Columns</b></td>
-            <td rowspan="2">${data.joins}</td>
-            <td rowspan="2">${data.where}</td>
-          </tr>
-      `;
+  if (!query) {
+    responseDiv.innerHTML = '<p class="error">Please enter a SQL query.</p>';
+    return;
+  }
 
-      for (const table of data.tables) {
-        html += `
-          <tr>
-            <td>${table.name}</td>
-            <td>${table.columns.join(',')}</td>
-          </tr>
-        `;
-      }
+  responseDiv.innerHTML = '<p class="loading">Analyzing SQL query...</p>';
 
-      html += `</table>`;
-      container.innerHTML = html;
+  try {
+    const res = await fetch('http://127.0.0.1:5000/analyze-sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query })
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Server error: ${res.status} - ${text}`);
     }
 
-    // Replace with your actual query
-    renderSQLAnalysis("SELECT * FROM aaa INNER JOIN bbb ON aaa.id = bbb.id WHERE aaa.id = 1");
-  </script>
+    const data = await res.json();
+
+    if (Array.isArray(data) && data.length > 0) {
+      const headers = Object.keys(data[0]);
+      let table = '<table><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
+      table += data.map(row => '<tr>' + headers.map(h => `<td>${row[h]}</td>`).join('') + '</tr>').join('');
+      table += '</table>';
+      responseDiv.innerHTML = table;
+    } else {
+      responseDiv.innerHTML = '<p class="empty">No structured data returned.</p>';
+    }
+  } catch (err) {
+    responseDiv.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+  }
+});
+</script>
+
 </body>
 </html>
