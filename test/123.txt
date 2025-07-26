@@ -1,112 +1,71 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>SQL Analysis Viewer</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-    }
-    h3 {
-      color: #2a4d69;
-    }
-    table {
-      border-collapse: collapse;
-      margin: 10px 0;
-      width: 100%;
-    }
-    th, td {
-      border: 1px solid #999;
-      padding: 8px;
-      text-align: left;
-    }
-    textarea {
-      width: 100%;
-      height: 150px;
-      margin-bottom: 20px;
-    }
-    button {
-      padding: 10px 20px;
-      background-color: #2a4d69;
-      color: white;
-      border: none;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    button:hover {
-      background-color: #1e3b52;
-    }
-  </style>
-</head>
-<body>
+Here is my SQL query. Please return a JSON response in the below format with:
 
-  <h1>SQL Analysis Output</h1>
-  
-  <textarea id="sqlDisplay" readonly></textarea>
-  <button onclick="fetchSQLData()">Fetch SQL Info</button>
-  <div id="outputContainer"></div>
+Summary of what the query is doing
 
-  <script>
-    const displayOrder = [
-      { key: "schema", label: "Schema" },
-      { key: "tables", label: "Tables" },
-      { key: "joins", label: "Joins" },
-      { key: "where", label: "Where Clause" },
-      { key: "queryLogic", label: "Query Logic" }
-    ];
+CTEs (Common Table Expressions) and their logic
 
-    function renderTable(obj) {
-      let html = '';
-      for (const tableName in obj) {
-        html += `<h4>${tableName}</h4>`;
-        html += `<table><tr>`;
-        obj[tableName].forEach(col => {
-          html += `<th>${col}</th>`;
-        });
-        html += `</tr></table>`;
-      }
-      return html;
+All tables used with schema, description, and columns
+
+For each column, look up the description from an Excel file by matching Schema, Table, and Column Name
+
+Joins: type, condition, and why it's used
+
+WHERE conditions and what they filter
+
+GROUP BY, ORDER BY, and LIMIT clauses with purpose
+
+{
+  "query_summary": "",
+  "ctes": [
+    {
+      "name": "",
+      "description": "",
+      "tables_used": []
     }
-
-    function formatValue(key, value) {
-      if (key === "tables" && typeof value === "object") {
-        return renderTable(value);
-      } else if (typeof value === "object") {
-        return "<pre>" + JSON.stringify(value, null, 2) + "</pre>";
-      }
-      return "<p>" + value + "</p>";
-    }
-
-    function fetchSQLData() {
-      fetch("http://localhost:5000/api/sqldata", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ key: "sqldata" })
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
+  ],
+  "tables": [
+    {
+      "schema": "",
+      "table_name": "",
+      "description": "",
+      "columns": [
+        {
+          "name": "",
+          "type": "",
+          "description": "(look this up from Excel using Schema + Table + Column)"
         }
-        return response.json();
-      })
-      .then(data => {
-        const output = displayOrder.map(item => {
-          if (data[item.key] !== undefined) {
-            return `<h3>${item.label}</h3>${formatValue(item.key, data[item.key])}`;
-          }
-          return "";
-        }).join("");
-        document.getElementById("outputContainer").innerHTML = output;
-        document.getElementById("sqlDisplay").value = ""; // Clear if needed
-      })
-      .catch(error => {
-        console.error("Error fetching SQL data:", error);
-        document.getElementById("sqlDisplay").value = "Failed to fetch SQL data.";
-      });
+      ]
     }
-  </script>
-</body>
-</html>
+  ],
+  "joins": [
+    {
+      "left_table": "",
+      "right_table": "",
+      "join_type": "",
+      "on_condition": "",
+      "description": ""
+    }
+  ],
+  "where_conditions": [
+    {
+      "condition": "",
+      "description": ""
+    }
+  ],
+  "group_by": [
+    {
+      "columns": [],
+      "description": ""
+    }
+  ],
+  "order_by": [
+    {
+      "columns": [],
+      "description": ""
+    }
+  ],
+  "limit": {
+    "value": 0,
+    "description": ""
+  }
+}
