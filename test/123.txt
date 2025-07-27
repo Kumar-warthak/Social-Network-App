@@ -1,71 +1,162 @@
-Here is my SQL query. Please return a JSON response in the below format with:
 
-Summary of what the query is doing
-
-CTEs (Common Table Expressions) and their logic
-
-All tables used with schema, description, and columns
-
-For each column, look up the description from an Excel file by matching Schema, Table, and Column Name
-
-Joins: type, condition, and why it's used
-
-WHERE conditions and what they filter
-
-GROUP BY, ORDER BY, and LIMIT clauses with purpose
-
-{
-  "query_summary": "",
-  "ctes": [
-    {
-      "name": "",
-      "description": "",
-      "tables_used": []
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SQL Query Analyzer</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: #f9f9fb;
     }
-  ],
-  "tables": [
-    {
-      "schema": "",
-      "table_name": "",
-      "description": "",
-      "columns": [
-        {
-          "name": "",
-          "type": "",
-          "description": "(look this up from Excel using Schema + Table + Column)"
-        }
-      ]
+    .card {
+      border-radius: 1rem;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.05);
     }
-  ],
-  "joins": [
-    {
-      "left_table": "",
-      "right_table": "",
-      "join_type": "",
-      "on_condition": "",
-      "description": ""
+    .card-header {
+      background-color: #0d6efd;
+      color: white;
     }
-  ],
-  "where_conditions": [
-    {
-      "condition": "",
-      "description": ""
+    code {
+      background-color: #f0f0f0;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
     }
-  ],
-  "group_by": [
-    {
-      "columns": [],
-      "description": ""
+    .section-title {
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid #0d6efd;
+      padding-bottom: 0.3rem;
+      font-weight: bold;
+      color: #0d6efd;
     }
-  ],
-  "order_by": [
-    {
-      "columns": [],
-      "description": ""
+  </style>
+</head>
+<body>
+  <div class="container my-5">
+    <h1 class="mb-4">SQL Query Analyzer</h1>
+
+    <div class="mb-4">
+      <textarea id="sqlInput" class="form-control" rows="5" placeholder="Paste your SQL query here..."></textarea>
+      <button onclick="postQuery()" class="btn btn-primary mt-3">Analyze</button>
+    </div>
+
+    <div id="query-container"></div>
+  </div>
+
+  <script>
+    async function postQuery() {
+      const sql = document.getElementById("sqlInput").value;
+      const container = document.getElementById("query-container");
+      container.innerHTML = "<p><em>Analyzing...</em></p>";
+
+      try {
+        const response = await fetch("https://your-api-url.com/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sqldata: sql })
+        });
+
+        if (!response.ok) throw new Error("Failed to fetch data");
+
+        const data = await response.json();
+        renderSQLExplanation(data);
+      } catch (error) {
+        container.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+      }
     }
-  ],
-  "limit": {
-    "value": 0,
-    "description": ""
-  }
-}
+
+    function createSection(title, html) {
+      return `
+        <div class="section">
+          <h4 class="section-title">${title}</h4>
+          ${html}
+        </div>
+      `;
+    }
+
+    function renderSQLExplanation(data) {
+      const container = document.getElementById("query-container");
+      let html = '';
+
+      html += createSection("Query Summary", `<p>${data.query_summary || "No summary provided."}</p>`);
+
+      if (data.ctes?.length) {
+        html += createSection("CTEs", data.ctes.map(cte => `
+          <div class="card mb-2">
+            <div class="card-body">
+              <h5 class="card-title">${cte.name}</h5>
+              <p><strong>Description:</strong> ${cte.description}</p>
+              <p><strong>Tables Used:</strong> ${cte.tables_used.join(", ")}</p>
+            </div>
+          </div>
+        `).join(''));
+      }
+
+      if (data.tables?.length) {
+        html += createSection("Tables & Columns", data.tables.map(table => `
+          <div class="card mb-3">
+            <div class="card-header">${table.schema}.${table.table_name}</div>
+            <div class="card-body">
+              <p><strong>Description:</strong> ${table.description}</p>
+              <table class="table table-sm table-bordered">
+                <thead class="table-light"><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead>
+                <tbody>
+                  ${table.columns.map(col => `
+                    <tr>
+                      <td><code>${col.name}</code></td>
+                      <td>${col.type}</td>
+                      <td>${col.description}</td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `).join(''));
+      }
+
+      if (data.joins?.length) {
+        html += createSection("Joins", data.joins.map(join => `
+          <div class="card mb-2">
+            <div class="card-body">
+              <p><strong>${join.join_type}</strong> between <code>${join.left_table}</code> and <code>${join.right_table}</code></p>
+              <p><strong>On:</strong> ${join.on_condition}</p>
+              <p><strong>Why:</strong> ${join.description}</p>
+            </div>
+          </div>
+        `).join(''));
+      }
+
+      if (data.where_conditions?.length) {
+        html += createSection("WHERE Conditions", `<ul class="list-group list-group-flush">` +
+          data.where_conditions.map(cond => `<li class="list-group-item"><code>${cond.condition}</code><br><small>${cond.description}</small></li>`).join('') +
+          `</ul>`);
+      }
+
+      if (data.group_by?.length) {
+        html += createSection("GROUP BY", data.group_by.map(g => `
+          <p><strong>Columns:</strong> ${g.columns.join(", ")}<br>
+          <strong>Description:</strong> ${g.description}</p>
+        `).join(''));
+      }
+
+      if (data.order_by?.length) {
+        html += createSection("ORDER BY", data.order_by.map(o => `
+          <p><strong>Columns:</strong> ${o.columns.join(", ")}<br>
+          <strong>Description:</strong> ${o.description}</p>
+        `).join(''));
+      }
+
+      if (data.limit?.value !== undefined) {
+        html += createSection("LIMIT", `
+          <p><strong>Value:</strong> ${data.limit.value}<br>
+          <strong>Description:</strong> ${data.limit.description}</p>
+        `);
+      }
+
+      container.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
