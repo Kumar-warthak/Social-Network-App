@@ -1,85 +1,28 @@
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service
-from selenium.webdriver.edge.options import Options
+import re
+import json
 
-edge_options = Options()
+# Sample JSON-like string (from the webpage)
+json_like = """{'name': 'John', 'age': 30, 'bio': 'Loves coding in \"Python\" & reading.'}"""
 
-# Use clean profile to avoid account sync
-edge_options.add_argument("--user-data-dir=C:\\Temp\\EdgeProfile")  # Use any empty folder
-edge_options.add_argument("--no-first-run")
-edge_options.add_argument("--disable-sync")
-edge_options.add_argument("--disable-background-networking")
-edge_options.add_argument("--disable-default-apps")
-edge_options.add_argument("--disable-popup-blocking")
-edge_options.add_argument("--disable-extensions")
+# Step 1: Replace single quotes around keys and values with double quotes
+def fix_quotes(json_like):
+    # Fix keys: 'key': → "key":
+    json_like = re.sub(r"(?<=\{|\s)'(\w+)':", r'"\1":', json_like)
 
-# Optional: headless mode if needed
-# edge_options.add_argument("--headless=new")
+    # Fix string values: "key": 'value' → "key": "value"
+    json_like = re.sub(r':\s*\'([^\']*)\'', r': "\1"', json_like)
 
-# Path to msedgedriver.exe (must match Edge version)
-service = Service("C:\\WebDriver\\msedgedriver.exe")  # Adjust as needed
+    return json_like
 
-# Launch Edge
-driver = webdriver.Edge(service=service, options=edge_options)
+fixed = fix_quotes(json_like)
 
-driver.get("https://www.bing.com")
-print(driver.title)
-driver.quit()      <textarea class="form-control" id="scriptInput" rows="8" placeholder="Enter C# Script Task code here..."></textarea>
-    </div>
+# Step 2: Load as JSON
+try:
+    parsed = json.loads(fixed)
+    print(parsed)
+except json.JSONDecodeError as e:
+    print("JSON decode error:", e)
 
-    <button class="btn btn-primary" onclick="analyzeCode()">Analyze Code</button>
-
-    <div id="result" class="mt-4"></div>
-  </div>
-
-  <script>
-    async function analyzeCode() {
-      const script = document.getElementById("scriptInput").value;
-      const resultDiv = document.getElementById("result");
-      resultDiv.innerHTML = "<p><em>Analyzing script...</em></p>";
-
-      try {
-        const response = await fetch("https://your-api-url.com/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sqldata: script })
-        });
-
-        if (!response.ok) throw new Error("Failed to fetch data");
-
-        const data = await response.json();
-        renderResults(data);
-      } catch (err) {
-        resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
-      }
-    }
-
-    function renderResults(data) {
-      const resultDiv = document.getElementById("result");
-      resultDiv.innerHTML = `
-        <div class="card shadow-sm">
-          <div class="card-body">
-            <h5 class="section-title">📝 Code Summary</h5>
-            <p>${data["Code Summary"] || "No summary provided."}</p>
-
-            <h5 class="section-title">🔧 Variables Used</h5>
-            <ul class="list-group mb-3">
-              ${data.Variables && data.Variables.length > 0
-                ? data.Variables.map(v => `<li class="list-group-item"><strong>${v["Variable Name"]}</strong>: ${v.Usage}</li>`).join("")
-                : `<li class="list-group-item">No variables found.</li>`}
-            </ul>
-
-            <h5 class="section-title">🛠️ Methods Explained</h5>
-            <ul class="list-group">
-              ${data.Methods && data.Methods.length > 0
-                ? data.Methods.map(m => `<li class="list-group-item"><strong>${m.Method}</strong>: ${m.Explanation}</li>`).join("")
-                : `<li class="list-group-item">No methods explained.</li>`}
-            </ul>
-          </div>
-        </div>
-      `;
-    }
-  </script>
-
-</body>
-</html>
+# Step 3: Optional – write to file
+with open("output.json", "w", encoding="utf-8") as f:
+    json.dump(parsed, f, indent=2)
