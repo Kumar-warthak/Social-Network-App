@@ -26,3 +26,11 @@ except json.JSONDecodeError as e:
 # Step 3: Optional – write to file
 with open("output.json", "w", encoding="utf-8") as f:
     json.dump(parsed, f, indent=2)
+
+
+def convert_quotes(text):
+    # Replace keys like 'Key Name': with "Key Name":
+    text = re.sub(r"'([^']+)'\s*:", r'"\1":', text)
+    # Replace values like: 'Value' with: "Value"
+    text = re.sub(r':\s*\'([^\']*)\'', r': "\1"', text)
+    return text
