@@ -1,36 +1,48 @@
-import re
-import json
+1. Difficulty in understanding complex SQL queries.
+2. Manual effort required to write new SQL queries.
+3. Time-consuming conversion of SQL from one platform to another (e.g., Oracle to MS SQL).
+4. Lack of quick summarization for programming code (SSIS, SAS, Python, etc.).
+5. Manual effort to create new programming code based on requirements.
+6. Complexity in converting programming code between languages (e.g., SAS to Python).
 
-# Sample JSON-like string (from the webpage)
-json_like = """{'name': 'John', 'age': 30, 'bio': 'Loves coding in \"Python\" & reading.'}"""
-
-# Step 1: Replace single quotes around keys and values with double quotes
-def fix_quotes(json_like):
-    # Fix keys: 'key': → "key":
-    json_like = re.sub(r"(?<=\{|\s)'(\w+)':", r'"\1":', json_like)
-
-    # Fix string values: "key": 'value' → "key": "value"
-    json_like = re.sub(r':\s*\'([^\']*)\'', r': "\1"', json_like)
-
-    return json_like
-
-fixed = fix_quotes(json_like)
-
-# Step 2: Load as JSON
-try:
-    parsed = json.loads(fixed)
-    print(parsed)
-except json.JSONDecodeError as e:
-    print("JSON decode error:", e)
-
-# Step 3: Optional – write to file
-with open("output.json", "w", encoding="utf-8") as f:
-    json.dump(parsed, f, indent=2)
+Difficulty understanding complex SQL queries.
+Writing new SQL is manual and tedious.
+Converting SQL across platforms (Oracle ↔ MS SQL) is laborious.
+Lack of quick summarization for SSIS, SAS, Python code.
+Manually creating code from requirements is time-consuming.
+Converting code between languages (e.g., SAS → Python) is complex.
 
 
-def convert_quotes(text):
-    # Replace keys like 'Key Name': with "Key Name":
-    text = re.sub(r"'([^']+)'\s*:", r'"\1":', text)
-    # Replace values like: 'Value' with: "Value"
-    text = re.sub(r':\s*\'([^\']*)\'', r': "\1"', text)
-    return text
+
+Transforms complex SQL logic into clear, natural language explanations.
+• Enables quick generation of new SQL queries based on requirements.
+• Automates SQL conversion between platforms.
+• Summarizes programming code into concise, easy-to-read language.
+• Builds new code automatically from specifications.
+• Converts programming code seamlessly between different languages.
+
+Natural Language Summaries — Clear, relatable explanations of SQL logic.
+Quick Query Generation — Craft new SQL statements based on plain requirements.
+Cross‑Platform SQL Conversion — Seamlessly migrate between SQL dialects.
+Code Summarization — Translate SSIS, SAS, Python logic into readable summaries.
+Automated Code Creation — Generate new code (SSIS, SAS, Python) from specs.
+Language Conversion — Transform code across languages (e.g., SAS to Python).
+
+Al cap
+
+
+
+Summarize SQL queries
+Build new SQL queries
+Convert SQL between platforms
+Summarize programming code
+Build code from requirements
+Convert programming code between languages
+
+
+
+Modern organizations often struggle with the complexity of SQL queries and programming code in platforms like Oracle, MS SQL, SSIS, SAS, and Python. Understanding intricate logic, creating new queries, or converting code between platforms requires deep technical expertise, slowing down project delivery and creating dependency on specialized resources. Non-technical stakeholders find it difficult to interpret technical scripts, leading to communication gaps between business and IT teams. Manual code migration and optimization further increase time, cost, and error risk. There is a clear need for an AI-powered solution that automates summarization, generation, and cross-platform translation of SQL and programming code.
+
+
+Organizations face challenges in understanding, creating, and converting complex SQL queries and programming code across platforms like Oracle, MS SQL, SSIS, SAS, and Python. This complexity slows development, hinders collaboration, and limits accessibility for non-technical users, creating a need for automated summarization, generation, and cross-platform code translation.
+
