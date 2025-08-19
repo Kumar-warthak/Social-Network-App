@@ -1,48 +1,160 @@
-1. Difficulty in understanding complex SQL queries.
-2. Manual effort required to write new SQL queries.
-3. Time-consuming conversion of SQL from one platform to another (e.g., Oracle to MS SQL).
-4. Lack of quick summarization for programming code (SSIS, SAS, Python, etc.).
-5. Manual effort to create new programming code based on requirements.
-6. Complexity in converting programming code between languages (e.g., SAS to Python).
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Compact Form</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #f0f2f5;
+    }
+    .form-container {
+      max-width: 450px; /* reduced width */
+      margin: 40px auto;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      overflow: hidden;
+      font-size: 0.9rem; /* slightly smaller text */
+    }
+    .form-header {
+      background: #0d6efd;
+      color: white;
+      text-align: center;
+      padding: 10px;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .label-manual {
+      background: #dbeafe; /* light blue */
+      border-radius: 4px 0 0 4px;
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+    }
+    .label-auto {
+      background: #fde2cf; /* soft peach */
+      border-radius: 4px 0 0 4px;
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+    }
+    .col-form-label {
+      margin-bottom: 0;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+    .form-control {
+      border-radius: 0 4px 4px 0;
+      padding: 4px 8px;
+      font-size: 0.9rem;
+      height: 30px; /* reduced input height */
+    }
+    .row {
+      margin-bottom: 6px; /* compact spacing */
+    }
+    .btn {
+      padding: 4px 16px;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
 
-Difficulty understanding complex SQL queries.
-Writing new SQL is manual and tedious.
-Converting SQL across platforms (Oracle ↔ MS SQL) is laborious.
-Lack of quick summarization for SSIS, SAS, Python code.
-Manually creating code from requirements is time-consuming.
-Converting code between languages (e.g., SAS → Python) is complex.
+  <!-- Form -->
+  <div class="form-container">
+    <div class="form-header">
+      Professional Data Form
+    </div>
+    <form id="myForm" class="p-3">
+      <!-- Manual Inputs -->
+      <div class="row">
+        <div class="col-4 label-manual">
+          <label for="input1" class="col-form-label">Input 1</label>
+        </div>
+        <div class="col-8">
+          <input type="text" class="form-control" id="input1" placeholder="Enter value">
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-4 label-manual">
+          <label for="input2" class="col-form-label">Input 2</label>
+        </div>
+        <div class="col-8">
+          <input type="text" class="form-control" id="input2" placeholder="Enter value">
+        </div>
+      </div>
 
+      <!-- Auto-populated Inputs -->
+      <div class="row">
+        <div class="col-4 label-auto">
+          <label for="input3" class="col-form-label">Input 3</label>
+        </div>
+        <div class="col-8">
+          <input type="text" class="form-control" id="input3" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-4 label-auto">
+          <label for="input4" class="col-form-label">Input 4</label>
+        </div>
+        <div class="col-8">
+          <input type="text" class="form-control" id="input4" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-4 label-auto">
+          <label for="input5" class="col-form-label">Input 5</label>
+        </div>
+        <div class="col-8">
+          <input type="text" class="form-control" id="input5" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-4 label-auto">
+          <label for="input6" class="col-form-label">Input 6</label>
+        </div>
+        <div class="col-8">
+          <input type="text" class="form-control" id="input6" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-4 label-auto">
+          <label for="input7" class="col-form-label">Input 7</label>
+        </div>
+        <div class="col-8">
+          <input type="text" class="form-control" id="input7" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-4 label-auto">
+          <label for="input8" class="col-form-label">Input 8</label>
+        </div>
+        <div class="col-8">
+          <input type="text" class="form-control" id="input8" readonly>
+        </div>
+      </div>
 
+      <!-- Button -->
+      <div class="text-center mt-2">
+        <button type="button" class="btn btn-primary" onclick="populateValues()">Populate</button>
+      </div>
+    </form>
+  </div>
 
-Transforms complex SQL logic into clear, natural language explanations.
-• Enables quick generation of new SQL queries based on requirements.
-• Automates SQL conversion between platforms.
-• Summarizes programming code into concise, easy-to-read language.
-• Builds new code automatically from specifications.
-• Converts programming code seamlessly between different languages.
+  <script>
+    function populateValues() {
+      const val1 = document.getElementById('input1').value;
+      const val2 = document.getElementById('input2').value;
 
-Natural Language Summaries — Clear, relatable explanations of SQL logic.
-Quick Query Generation — Craft new SQL statements based on plain requirements.
-Cross‑Platform SQL Conversion — Seamlessly migrate between SQL dialects.
-Code Summarization — Translate SSIS, SAS, Python logic into readable summaries.
-Automated Code Creation — Generate new code (SSIS, SAS, Python) from specs.
-Language Conversion — Transform code across languages (e.g., SAS to Python).
+      document.getElementById('input3').value = `Computed: ${val1} + ${val2}`;
+      document.getElementById('input4').value = val1.length + val2.length;
+      document.getElementById('input5').value = val1.toUpperCase();
+      document.getElementById('input6').value = val2.toLowerCase();
+      document.getElementById('input7').value = new Date().toLocaleDateString();
+      document.getElementById('input8').value = new Date().toLocaleTimeString();
+    }
+  </script>
 
-Al cap
-
-
-
-Summarize SQL queries
-Build new SQL queries
-Convert SQL between platforms
-Summarize programming code
-Build code from requirements
-Convert programming code between languages
-
-
-
-Modern organizations often struggle with the complexity of SQL queries and programming code in platforms like Oracle, MS SQL, SSIS, SAS, and Python. Understanding intricate logic, creating new queries, or converting code between platforms requires deep technical expertise, slowing down project delivery and creating dependency on specialized resources. Non-technical stakeholders find it difficult to interpret technical scripts, leading to communication gaps between business and IT teams. Manual code migration and optimization further increase time, cost, and error risk. There is a clear need for an AI-powered solution that automates summarization, generation, and cross-platform translation of SQL and programming code.
-
-
-Organizations face challenges in understanding, creating, and converting complex SQL queries and programming code across platforms like Oracle, MS SQL, SSIS, SAS, and Python. This complexity slows development, hinders collaboration, and limits accessibility for non-technical users, creating a need for automated summarization, generation, and cross-platform code translation.
-
+</body>
+</html>
