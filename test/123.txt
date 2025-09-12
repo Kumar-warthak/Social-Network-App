@@ -1,99 +1,104 @@
-// App.js
-import React, { useState } from "react";
-import Chatbot from "react-chatbot-kit";
-import "react-chatbot-kit/build/main.css";
+// TablesWidget.js
+import React from "react";
 
-import config from "./config";
-import MessageParser from "./MessageParser";
-import ActionProvider from "./ActionProvider";
-
-function App() {
-  const [open, setOpen] = useState(false);
+function TablesWidget(props) {
+  const { tables, actionProvider } = props;
 
   return (
-    <div className="App">
-      {/* Floating Button */}
-      {!open && (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+      {tables.map((table, idx) => (
         <button
-          onClick={() => setOpen(true)}
+          key={idx}
           style={{
-            position: "fixed",
-            bottom: "20px",
-            right: "20px",
-            width: "60px",
-            height: "60px",
-            borderRadius: "50%",
-            background: "#4CAF50",
-            color: "white",
-            border: "none",
-            boxShadow: "0px 4px 10px rgba(0,0,0,0.3)",
-            cursor: "pointer",
-            fontSize: "28px",
-            fontWeight: "bold"
+            background: "#f1f1f1",
+            border: "1px solid #ddd",
+            borderRadius: "8px",
+            padding: "6px 10px",
+            fontSize: "13px",
+            cursor: "pointer"
           }}
+          onClick={() => actionProvider.explainTable(table)}
         >
-          💬
+          {table}
         </button>
-      )}
-
-      {/* Chatbot Popup */}
-      {open && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "90px",
-            right: "20px",
-            width: "320px",
-            height: "480px",
-            borderRadius: "12px",
-            boxShadow: "0px 4px 12px rgba(0,0,0,0.2)",
-            overflow: "hidden",
-            background: "#fff",
-            zIndex: 1000,
-            display: "flex",
-            flexDirection: "column"
-          }}
-        >
-          {/* Header */}
-          <div
-            style={{
-              background: "#4CAF50",
-              color: "#fff",
-              padding: "10px",
-              fontWeight: "600",
-              fontSize: "15px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}
-          >
-            <span>📊 MetaBot</span>
-            <button
-              onClick={() => setOpen(false)}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#fff",
-                fontSize: "18px",
-                cursor: "pointer"
-              }}
-            >
-              ✖
-            </button>
-          </div>
-
-          {/* Chatbot Body */}
-          <div style={{ flex: 1 }}>
-            <Chatbot
-              config={config}
-              messageParser={MessageParser}
-              actionProvider={ActionProvider}
-            />
-          </div>
-        </div>
-      )}
+      ))}
     </div>
   );
 }
 
-export default App;
+export default TablesWidget;
+
+
+// ActionProvider.js
+class ActionProvider {
+  constructor(createChatBotMessage, setStateFunc) {
+    this.createChatBotMessage = createChatBotMessage;
+    this.setState = setStateFunc;
+  }
+
+  greet = () => {
+    const message = this.createChatBotMessage("Hi! I can help you with:", {
+      widget: "options"
+    });
+    this.addMessageToState(message);
+  };
+
+  showTables = (schema, metadata) => {
+    const tables = metadata.schemas
+      .find((s) => s.name === schema)?.tables.map((t) => t.name) || [];
+
+    const message = this.createChatBotMessage(
+      `Here are the tables in schema "${schema}":`,
+      { widget: "tables", payload: { tables } }
+    );
+
+    this.addMessageToState(message);
+  };
+
+  explainTable = (tableName) => {
+    // You can load metadata.json and fetch description/columns here
+    const message = this.createChatBotMessage(
+      `📄 Details for table **${tableName}**:\n\n- Description: Example description\n- Columns: ID, Name, Email`
+    );
+    this.addMessageToState(message);
+  };
+
+  addMessageToState = (message) => {
+    this.setState((prev) => ({
+      ...prev,
+      messages: [...prev.messages, message]
+    }));
+  };
+}
+
+export default ActionProvider;
+import { createChatBotMessage } from "react-chatbot-kit";
+import Options from "./components/Options";
+import TablesWidget from "./components/TablesWidget";
+
+const config = {
+  botName: "MetaBot",
+  initialMessages: [
+    createChatBotMessage("Hi! I can help you with:", {
+      widget: "options"
+    }),
+  ],
+  widgets: [
+    {
+      widgetName: "options",
+      widgetFunc: (props) => <Options {...props} />
+    },
+    {
+      widgetName: "tables",
+      widgetFunc: (props) => (
+        <TablesWidget {...props} tables={props.payload.tables} />
+      )
+    }
+  ],
+  customComponents: {
+    header: () => null
+  }
+};
+
+export default config;
+
