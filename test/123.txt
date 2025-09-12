@@ -1,104 +1,47 @@
-// TablesWidget.js
+// Options.js
 import React from "react";
 
-function TablesWidget(props) {
-  const { tables, actionProvider } = props;
+const Options = (props) => {
+  const options = [
+    {
+      text: "🛠 Tool",
+      handler: props.actionProvider.handleTool,
+      id: 1,
+    },
+    {
+      text: "📊 Metadata",
+      handler: props.actionProvider.handleMetadata,
+      id: 2,
+    },
+  ];
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-      {tables.map((table, idx) => (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "8px",
+        marginTop: "8px",
+      }}
+    >
+      {options.map((option) => (
         <button
-          key={idx}
+          key={option.id}
+          onClick={option.handler}
           style={{
-            background: "#f1f1f1",
-            border: "1px solid #ddd",
+            padding: "6px 12px",
             borderRadius: "8px",
-            padding: "6px 10px",
-            fontSize: "13px",
-            cursor: "pointer"
+            border: "1px solid #ddd",
+            background: "#f8f8f8",
+            cursor: "pointer",
+            fontSize: "14px",
           }}
-          onClick={() => actionProvider.explainTable(table)}
         >
-          {table}
+          {option.text}
         </button>
       ))}
     </div>
   );
-}
-
-export default TablesWidget;
-
-
-// ActionProvider.js
-class ActionProvider {
-  constructor(createChatBotMessage, setStateFunc) {
-    this.createChatBotMessage = createChatBotMessage;
-    this.setState = setStateFunc;
-  }
-
-  greet = () => {
-    const message = this.createChatBotMessage("Hi! I can help you with:", {
-      widget: "options"
-    });
-    this.addMessageToState(message);
-  };
-
-  showTables = (schema, metadata) => {
-    const tables = metadata.schemas
-      .find((s) => s.name === schema)?.tables.map((t) => t.name) || [];
-
-    const message = this.createChatBotMessage(
-      `Here are the tables in schema "${schema}":`,
-      { widget: "tables", payload: { tables } }
-    );
-
-    this.addMessageToState(message);
-  };
-
-  explainTable = (tableName) => {
-    // You can load metadata.json and fetch description/columns here
-    const message = this.createChatBotMessage(
-      `📄 Details for table **${tableName}**:\n\n- Description: Example description\n- Columns: ID, Name, Email`
-    );
-    this.addMessageToState(message);
-  };
-
-  addMessageToState = (message) => {
-    this.setState((prev) => ({
-      ...prev,
-      messages: [...prev.messages, message]
-    }));
-  };
-}
-
-export default ActionProvider;
-import { createChatBotMessage } from "react-chatbot-kit";
-import Options from "./components/Options";
-import TablesWidget from "./components/TablesWidget";
-
-const config = {
-  botName: "MetaBot",
-  initialMessages: [
-    createChatBotMessage("Hi! I can help you with:", {
-      widget: "options"
-    }),
-  ],
-  widgets: [
-    {
-      widgetName: "options",
-      widgetFunc: (props) => <Options {...props} />
-    },
-    {
-      widgetName: "tables",
-      widgetFunc: (props) => (
-        <TablesWidget {...props} tables={props.payload.tables} />
-      )
-    }
-  ],
-  customComponents: {
-    header: () => null
-  }
 };
 
-export default config;
-
+export default Options;
