@@ -1,235 +1,5 @@
-ActionProvider.js
-
-// ActionProvider.js
-import metadata from "./metadata.json";
-
-class ActionProvider {
-  constructor(createChatBotMessage, setState, createClientMessage) {
-    this.createChatBotMessage = createChatBotMessage;
-    this.setState = setState;
-    this.createClientMessage = createClientMessage;
-  }
-
-  updateChatbotState = (message) => {
-    this.setState(prev => ({
-      ...prev,
-      messages: [...prev.messages, message]
-    }));
-  }
-
-  showMenu = () => {
-    const message = this.createChatBotMessage("Hi! I can help you with:", {
-      widget: "mainMenu"
-    });
-    this.updateChatbotState(message);
-  }
-
-  explainTool = () => {
-    const msg = this.createChatBotMessage(
-      "🛠 Tool: I help you understand your database metadata. You can ask for metadata, explain a table, or list tables in a schema."
-    );
-    this.updateChatbotState(msg);
-    this.showMenu();
-  }
-
-  explainMetadata = () => {
-    let text = `📊 Database: ${metadata.database}\n\nSchemas:\n`;
-    metadata.schemas.forEach(schema => {
-      text += `\n🔹 ${schema.name}\n`;
-      schema.tables.forEach(t => {
-        const cols = t.columns.map(c => `${c.name} (${c.type})`).join(", ");
-        text += `  • ${t.name} — ${t.description || "no description"} → ${cols}\n`;
-      });
-    });
-    const msg = this.createChatBotMessage(text);
-    this.updateChatbotState(msg);
-    this.showMenu();
-  }
-
-  explainTable = (tableInput) => {
-    if (!tableInput) {
-      this.updateChatbotState(
-        this.createChatBotMessage("Please provide a table name, e.g. 'explain Customers' or 'explain dbo.Customers'.")
-      );
-      this.showMenu();
-      return;
-    }
-
-    let targetSchema = null;
-    let tableName = tableInput;
-
-    // check for schema.table form
-    if (tableInput.includes(".")) {
-      const parts = tableInput.split(".");
-      targetSchema = parts[0];
-      tableName = parts[1];
-    }
-
-    let found = null;
-    metadata.schemas.forEach(schema => {
-      if (targetSchema && schema.name.toLowerCase() !== targetSchema.toLowerCase()) {
-        return;
-      }
-      schema.tables.forEach(t => {
-        if (t.name.toLowerCase() === tableName.toLowerCase()) {
-          found = { schema: schema.name, table: t };
-        }
-      });
-    });
-
-    if (!found) {
-      this.updateChatbotState(
-        this.createChatBotMessage(`❌ Table "${tableInput}" not found.`)
-      );
-      this.showMenu();
-      return;
-    }
-
-    const t = found.table;
-    let text = `📌 Table: ${t.name}\nSchema: ${found.schema}\nDescription: ${t.description || "No description."}\nColumns:\n`;
-    t.columns.forEach(c => {
-      const pk = c.primaryKey ? " [PK]" : "";
-      const fk = c.foreignKey ? ` [FK → ${c.foreignKey}]` : "";
-      text += `  - ${c.name} (${c.type})${pk}${fk} → ${c.description || "No description."}\n`;
-    });
-    // (Optional) example SQL:
-    text += `\nExample SQL: SELECT * FROM ${found.schema}.${t.name} LIMIT 10;`;
-
-    this.updateChatbotState(this.createChatBotMessage(text));
-    this.showMenu();
-  }
-
-  listTablesInSchema = (schemaName) => {
-    if (!schemaName) {
-      this.updateChatbotState(this.createChatBotMessage("Specify a schema: 'list tables in dbo'."));
-      this.showMenu();
-      return;
-    }
-    const schema = metadata.schemas.find(s => s.name.toLowerCase() === schemaName.toLowerCase());
-    if (!schema) {
-      this.updateChatbotState(this.createChatBotMessage(`Schema "${schemaName}" not found.`));
-      this.showMenu();
-      return;
-    }
-    const names = schema.tables.map(t => `${t.name} — ${t.description || "no description"}`).join("\n");
-    this.updateChatbotState(this.createChatBotMessage(`Tables in ${schema.name}:\n${names}`));
-    this.showMenu();
-  }
-}
-
-export default ActionProvider;
-
-MessageParser.js
-
-// MessageParser.js
-
-class MessageParser {
-  constructor(actionProvider) {
-    this.actionProvider = actionProvider;
-  }
-
-  parse(message) {
-    const raw = message.trim();
-    const lower = raw.toLowerCase();
-
-    if (lower === "tool" || lower.includes("tool")) {
-      this.actionProvider.explainTool();
-      return;
-    }
-
-    if (lower === "metadata" || lower.includes("metadata")) {
-      this.actionProvider.explainMetadata();
-      return;
-    }
-
-    if (lower.startsWith("explain ")) {
-      const after = raw.substr(8).trim();
-      this.actionProvider.explainTable(after);
-      return;
-    }
-
-    const listMatch = lower.match(/^list tables in (.+)$/);
-    if (listMatch) {
-      const schemaName = listMatch[1].trim();
-      this.actionProvider.listTablesInSchema(schemaName);
-      return;
-    }
-
-    // fallback
-    this.actionProvider.updateChatbotState(
-      this.actionProvider.createChatBotMessage("I didn't understand. Please say 'tool', 'metadata', or 'explain <table>'.")
-    );
-    this.actionProvider.showMenu();
-  }
-}
-
-export default MessageParser;
-
-
-
-config.js
-
-// config.js
-
-import { createChatBotMessage } from "react-chatbot-kit";
-import metadata from "./metadata.json";
-import MainMenu from "./MainMenu";  // you create this
-
-const config = {
-  initialMessages: [
-    createChatBotMessage("Hi! I can help you with:", { widget: "mainMenu" })
-  ],
-  state: {
-    metadata: metadata
-  },
-  widgets: [
-    {
-      widgetName: "mainMenu",
-      widgetFunc: (props) => <MainMenu {...props} />,
-      mapStateToProps: ["metadata"]
-    }
-  ],
-  botName: "MetaBot"
-};
-
-export default config;
-
-
-MainMenu.js
-
-// MainMenu.js
-
-import React from "react";
-
-const MainMenu = (props) => {
-  const { actionProvider } = props;
-
-  return (
-    <div style={{ padding: 10 }}>
-      <h4>What would you like to know?</h4>
-      <div style={{ margin: "8px 0" }}>
-        <button onClick={() => actionProvider.explainTool()} style={{ marginRight: 8 }}>
-          🛠 Tool
-        </button>
-        <button onClick={() => actionProvider.explainMetadata()}>
-          📊 Metadata
-        </button>
-      </div>
-      <div style={{ fontSize: 12, color: "#555" }}>
-        Or you can type commands like:<br />
-        <code>explain Customers</code> / <code>list tables in dbo</code>
-      </div>
-    </div>
-  );
-};
-
-export default MainMenu;
-
-
-App.js
-
 // App.js
-import React from "react";
+import React, { useState } from "react";
 import Chatbot from "react-chatbot-kit";
 import "react-chatbot-kit/build/main.css";
 
@@ -238,24 +8,92 @@ import MessageParser from "./MessageParser";
 import ActionProvider from "./ActionProvider";
 
 function App() {
+  const [open, setOpen] = useState(false);
+
   return (
     <div className="App">
-      <header style={{ marginBottom: "20px" }}>
-        <h2>📊 Database Metadata Chatbot</h2>
-      </header>
+      {/* Floating Button */}
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          style={{
+            position: "fixed",
+            bottom: "20px",
+            right: "20px",
+            width: "60px",
+            height: "60px",
+            borderRadius: "50%",
+            background: "#4CAF50",
+            color: "white",
+            border: "none",
+            boxShadow: "0px 4px 10px rgba(0,0,0,0.3)",
+            cursor: "pointer",
+            fontSize: "28px",
+            fontWeight: "bold"
+          }}
+        >
+          💬
+        </button>
+      )}
 
-      <div style={{ maxWidth: "400px", margin: "0 auto" }}>
-        <Chatbot
-          config={config}
-          messageParser={MessageParser}
-          actionProvider={ActionProvider}
-        />
-      </div>
+      {/* Chatbot Popup */}
+      {open && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "90px",
+            right: "20px",
+            width: "320px",
+            height: "480px",
+            borderRadius: "12px",
+            boxShadow: "0px 4px 12px rgba(0,0,0,0.2)",
+            overflow: "hidden",
+            background: "#fff",
+            zIndex: 1000,
+            display: "flex",
+            flexDirection: "column"
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              background: "#4CAF50",
+              color: "#fff",
+              padding: "10px",
+              fontWeight: "600",
+              fontSize: "15px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}
+          >
+            <span>📊 MetaBot</span>
+            <button
+              onClick={() => setOpen(false)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#fff",
+                fontSize: "18px",
+                cursor: "pointer"
+              }}
+            >
+              ✖
+            </button>
+          </div>
+
+          {/* Chatbot Body */}
+          <div style={{ flex: 1 }}>
+            <Chatbot
+              config={config}
+              messageParser={MessageParser}
+              actionProvider={ActionProvider}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default App;
-
-
-
