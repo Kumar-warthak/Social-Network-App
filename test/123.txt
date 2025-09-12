@@ -1,47 +1,81 @@
-// Options.js
-import React from "react";
+// ActionProvider.js
+class ActionProvider {
+  constructor(createChatBotMessage, setStateFunc) {
+    this.createChatBotMessage = createChatBotMessage;
+    this.setState = setStateFunc;
+  }
 
-const Options = (props) => {
-  const options = [
-    {
-      text: "🛠 Tool",
-      handler: props.actionProvider.handleTool,
-      id: 1,
-    },
-    {
-      text: "📊 Metadata",
-      handler: props.actionProvider.handleMetadata,
-      id: 2,
-    },
-  ];
+  // 👋 Default greeting
+  greet = () => {
+    const message = this.createChatBotMessage("Hi! I can help you with:", {
+      widget: "options",
+    });
+    this.addMessageToState(message);
+  };
 
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "8px",
-        marginTop: "8px",
-      }}
-    >
-      {options.map((option) => (
-        <button
-          key={option.id}
-          onClick={option.handler}
-          style={{
-            padding: "6px 12px",
-            borderRadius: "8px",
-            border: "1px solid #ddd",
-            background: "#f8f8f8",
-            cursor: "pointer",
-            fontSize: "14px",
-          }}
-        >
-          {option.text}
-        </button>
-      ))}
-    </div>
-  );
-};
+  // 🛠 Tool explanation
+  handleTool = () => {
+    const message = this.createChatBotMessage(
+      "🛠 This tool lets you explore database metadata.\n\nYou can:\n- List schemas\n- List tables\n- Get column details\n- Explain tables"
+    );
+    this.addMessageToState(message);
+    this.showMenu();
+  };
 
-export default Options;
+  // 📊 Metadata option
+  handleMetadata = () => {
+    const message = this.createChatBotMessage(
+      "📊 Please enter a schema name (e.g., `list tables in dbo`) or pick from available schemas."
+    );
+    this.addMessageToState(message);
+
+    // Example hardcoded schemas (replace with metadata.json later)
+    const schemas = ["dbo", "sales", "hr"];
+    const schemaButtons = this.createChatBotMessage(
+      "Available schemas:",
+      { widget: "tables", payload: { tables: schemas } }
+    );
+    this.addMessageToState(schemaButtons);
+  };
+
+  // Show tables in schema
+  showTables = (schema, metadata) => {
+    const tables =
+      metadata.schemas.find((s) => s.name === schema)?.tables.map((t) => t.name) || [];
+
+    const message = this.createChatBotMessage(
+      `Here are the tables in schema "${schema}":`,
+      { widget: "tables", payload: { tables } }
+    );
+
+    this.addMessageToState(message);
+  };
+
+  // 📄 Explain a table (demo)
+  explainTable = (tableName) => {
+    // Replace this with real metadata.json lookup
+    const message = this.createChatBotMessage(
+      `📄 Details for table **${tableName}**:\n\n- Description: Example description\n- Columns: ID, Name, Email`
+    );
+    this.addMessageToState(message);
+    this.showMenu();
+  };
+
+  // Show menu again after each reply
+  showMenu = () => {
+    const message = this.createChatBotMessage("What would you like to do next?", {
+      widget: "options",
+    });
+    this.addMessageToState(message);
+  };
+
+  // Helper to push message into state
+  addMessageToState = (message) => {
+    this.setState((prev) => ({
+      ...prev,
+      messages: [...prev.messages, message],
+    }));
+  };
+}
+
+export default ActionProvider;
