@@ -1,159 +1,261 @@
-<!DOCTYPE html>  
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Compact Form</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body {
-      background-color: #f0f2f5;
-    }
-    .form-container {
-      max-width: 540px; /* increased width by 20% */
-      margin: 40px auto;
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      overflow: hidden;
-      font-size: 0.9rem; /* slightly smaller text */
-    }
-    .form-header {
-      background: #0d6efd;
-      color: white;
-      text-align: center;
-      padding: 10px;
-      font-size: 1.1rem;
-      font-weight: 600;
+ActionProvider.js
+
+// ActionProvider.js
+import metadata from "./metadata.json";
+
+class ActionProvider {
+  constructor(createChatBotMessage, setState, createClientMessage) {
+    this.createChatBotMessage = createChatBotMessage;
+    this.setState = setState;
+    this.createClientMessage = createClientMessage;
+  }
+
+  updateChatbotState = (message) => {
+    this.setState(prev => ({
+      ...prev,
+      messages: [...prev.messages, message]
+    }));
+  }
+
+  showMenu = () => {
+    const message = this.createChatBotMessage("Hi! I can help you with:", {
+      widget: "mainMenu"
+    });
+    this.updateChatbotState(message);
+  }
+
+  explainTool = () => {
+    const msg = this.createChatBotMessage(
+      "🛠 Tool: I help you understand your database metadata. You can ask for metadata, explain a table, or list tables in a schema."
+    );
+    this.updateChatbotState(msg);
+    this.showMenu();
+  }
+
+  explainMetadata = () => {
+    let text = `📊 Database: ${metadata.database}\n\nSchemas:\n`;
+    metadata.schemas.forEach(schema => {
+      text += `\n🔹 ${schema.name}\n`;
+      schema.tables.forEach(t => {
+        const cols = t.columns.map(c => `${c.name} (${c.type})`).join(", ");
+        text += `  • ${t.name} — ${t.description || "no description"} → ${cols}\n`;
+      });
+    });
+    const msg = this.createChatBotMessage(text);
+    this.updateChatbotState(msg);
+    this.showMenu();
+  }
+
+  explainTable = (tableInput) => {
+    if (!tableInput) {
+      this.updateChatbotState(
+        this.createChatBotMessage("Please provide a table name, e.g. 'explain Customers' or 'explain dbo.Customers'.")
+      );
+      this.showMenu();
+      return;
     }
 
-    /* Equal height labels */
-    .label-manual,
-    .label-auto {
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      height: 38px; /* same as bootstrap input height */
-      padding: 0 8px;
-      border-radius: 4px 0 0 4px;
-      font-weight: 500;
-    }
-    .label-manual {
-      background: #dbeafe; /* light blue */
-    }
-    .label-auto {
-      background: #fde2cf; /* soft peach */
+    let targetSchema = null;
+    let tableName = tableInput;
+
+    // check for schema.table form
+    if (tableInput.includes(".")) {
+      const parts = tableInput.split(".");
+      targetSchema = parts[0];
+      tableName = parts[1];
     }
 
-    .form-control {
-      border-radius: 0 4px 4px 0;
-      font-size: 0.9rem;
-      height: 38px; /* same height as label */
-    }
-    .row {
-      margin-bottom: 6px; /* compact spacing */
-    }
-    .btn {
-      padding: 6px 18px;
-      font-size: 0.9rem;
-    }
-  </style>
-</head>
-<body>
+    let found = null;
+    metadata.schemas.forEach(schema => {
+      if (targetSchema && schema.name.toLowerCase() !== targetSchema.toLowerCase()) {
+        return;
+      }
+      schema.tables.forEach(t => {
+        if (t.name.toLowerCase() === tableName.toLowerCase()) {
+          found = { schema: schema.name, table: t };
+        }
+      });
+    });
 
-  <!-- Form -->
-  <div class="form-container">
-    <div class="form-header">
-      Professional Data Form
+    if (!found) {
+      this.updateChatbotState(
+        this.createChatBotMessage(`❌ Table "${tableInput}" not found.`)
+      );
+      this.showMenu();
+      return;
+    }
+
+    const t = found.table;
+    let text = `📌 Table: ${t.name}\nSchema: ${found.schema}\nDescription: ${t.description || "No description."}\nColumns:\n`;
+    t.columns.forEach(c => {
+      const pk = c.primaryKey ? " [PK]" : "";
+      const fk = c.foreignKey ? ` [FK → ${c.foreignKey}]` : "";
+      text += `  - ${c.name} (${c.type})${pk}${fk} → ${c.description || "No description."}\n`;
+    });
+    // (Optional) example SQL:
+    text += `\nExample SQL: SELECT * FROM ${found.schema}.${t.name} LIMIT 10;`;
+
+    this.updateChatbotState(this.createChatBotMessage(text));
+    this.showMenu();
+  }
+
+  listTablesInSchema = (schemaName) => {
+    if (!schemaName) {
+      this.updateChatbotState(this.createChatBotMessage("Specify a schema: 'list tables in dbo'."));
+      this.showMenu();
+      return;
+    }
+    const schema = metadata.schemas.find(s => s.name.toLowerCase() === schemaName.toLowerCase());
+    if (!schema) {
+      this.updateChatbotState(this.createChatBotMessage(`Schema "${schemaName}" not found.`));
+      this.showMenu();
+      return;
+    }
+    const names = schema.tables.map(t => `${t.name} — ${t.description || "no description"}`).join("\n");
+    this.updateChatbotState(this.createChatBotMessage(`Tables in ${schema.name}:\n${names}`));
+    this.showMenu();
+  }
+}
+
+export default ActionProvider;
+
+MessageParser.js
+
+// MessageParser.js
+
+class MessageParser {
+  constructor(actionProvider) {
+    this.actionProvider = actionProvider;
+  }
+
+  parse(message) {
+    const raw = message.trim();
+    const lower = raw.toLowerCase();
+
+    if (lower === "tool" || lower.includes("tool")) {
+      this.actionProvider.explainTool();
+      return;
+    }
+
+    if (lower === "metadata" || lower.includes("metadata")) {
+      this.actionProvider.explainMetadata();
+      return;
+    }
+
+    if (lower.startsWith("explain ")) {
+      const after = raw.substr(8).trim();
+      this.actionProvider.explainTable(after);
+      return;
+    }
+
+    const listMatch = lower.match(/^list tables in (.+)$/);
+    if (listMatch) {
+      const schemaName = listMatch[1].trim();
+      this.actionProvider.listTablesInSchema(schemaName);
+      return;
+    }
+
+    // fallback
+    this.actionProvider.updateChatbotState(
+      this.actionProvider.createChatBotMessage("I didn't understand. Please say 'tool', 'metadata', or 'explain <table>'.")
+    );
+    this.actionProvider.showMenu();
+  }
+}
+
+export default MessageParser;
+
+
+
+config.js
+
+// config.js
+
+import { createChatBotMessage } from "react-chatbot-kit";
+import metadata from "./metadata.json";
+import MainMenu from "./MainMenu";  // you create this
+
+const config = {
+  initialMessages: [
+    createChatBotMessage("Hi! I can help you with:", { widget: "mainMenu" })
+  ],
+  state: {
+    metadata: metadata
+  },
+  widgets: [
+    {
+      widgetName: "mainMenu",
+      widgetFunc: (props) => <MainMenu {...props} />,
+      mapStateToProps: ["metadata"]
+    }
+  ],
+  botName: "MetaBot"
+};
+
+export default config;
+
+
+MainMenu.js
+
+// MainMenu.js
+
+import React from "react";
+
+const MainMenu = (props) => {
+  const { actionProvider } = props;
+
+  return (
+    <div style={{ padding: 10 }}>
+      <h4>What would you like to know?</h4>
+      <div style={{ margin: "8px 0" }}>
+        <button onClick={() => actionProvider.explainTool()} style={{ marginRight: 8 }}>
+          🛠 Tool
+        </button>
+        <button onClick={() => actionProvider.explainMetadata()}>
+          📊 Metadata
+        </button>
+      </div>
+      <div style={{ fontSize: 12, color: "#555" }}>
+        Or you can type commands like:<br />
+        <code>explain Customers</code> / <code>list tables in dbo</code>
+      </div>
     </div>
-    <form id="myForm" class="p-3">
-      <!-- Manual Inputs -->
-      <div class="row">
-        <div class="col-4 label-manual">
-          <label for="input1" class="col-form-label">Input 1</label>
-        </div>
-        <div class="col-8">
-          <input type="text" class="form-control" id="input1" placeholder="Enter value">
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-4 label-manual">
-          <label for="input2" class="col-form-label">Input 2</label>
-        </div>
-        <div class="col-8">
-          <input type="text" class="form-control" id="input2" placeholder="Enter value">
-        </div>
-      </div>
+  );
+};
 
-      <!-- Auto-populated Inputs -->
-      <div class="row">
-        <div class="col-4 label-auto">
-          <label for="input3" class="col-form-label">Input 3</label>
-        </div>
-        <div class="col-8">
-          <input type="text" class="form-control" id="input3" readonly>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-4 label-auto">
-          <label for="input4" class="col-form-label">Input 4</label>
-        </div>
-        <div class="col-8">
-          <input type="text" class="form-control" id="input4" readonly>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-4 label-auto">
-          <label for="input5" class="col-form-label">Input 5</label>
-        </div>
-        <div class="col-8">
-          <input type="text" class="form-control" id="input5" readonly>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-4 label-auto">
-          <label for="input6" class="col-form-label">Input 6</label>
-        </div>
-        <div class="col-8">
-          <input type="text" class="form-control" id="input6" readonly>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-4 label-auto">
-          <label for="input7" class="col-form-label">Input 7</label>
-        </div>
-        <div class="col-8">
-          <input type="text" class="form-control" id="input7" readonly>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-4 label-auto">
-          <label for="input8" class="col-form-label">Input 8</label>
-        </div>
-        <div class="col-8">
-          <input type="text" class="form-control" id="input8" readonly>
-        </div>
-      </div>
+export default MainMenu;
 
-      <!-- Button -->
-      <div class="text-center mt-2">
-        <button type="button" class="btn btn-primary" onclick="populateValues()">Populate</button>
+
+App.js
+
+// App.js
+import React from "react";
+import Chatbot from "react-chatbot-kit";
+import "react-chatbot-kit/build/main.css";
+
+import config from "./config";
+import MessageParser from "./MessageParser";
+import ActionProvider from "./ActionProvider";
+
+function App() {
+  return (
+    <div className="App">
+      <header style={{ marginBottom: "20px" }}>
+        <h2>📊 Database Metadata Chatbot</h2>
+      </header>
+
+      <div style={{ maxWidth: "400px", margin: "0 auto" }}>
+        <Chatbot
+          config={config}
+          messageParser={MessageParser}
+          actionProvider={ActionProvider}
+        />
       </div>
-    </form>
-  </div>
+    </div>
+  );
+}
 
-  <script>
-    function populateValues() {
-      const val1 = document.getElementById('input1').value;
-      const val2 = document.getElementById('input2').value;
+export default App;
 
-      document.getElementById('input3').value = `Computed: ${val1} + ${val2}`;
-      document.getElementById('input4').value = val1.length + val2.length;
-      document.getElementById('input5').value = val1.toUpperCase();
-      document.getElementById('input6').value = val2.toLowerCase();
-      document.getElementById('input7').value = new Date().toLocaleDateString();
-      document.getElementById('input8').value = new Date().toLocaleTimeString();
-    }
-  </script>
 
-</body>
-</html>
+
