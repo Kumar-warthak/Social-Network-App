@@ -1,5 +1,92 @@
 import React from "react";
-import metadata from "./metadata.json"; // make sure metadata.json is in src/
+
+const MainMenu = (props) => {
+  const options = [
+    { text: "Help", handler: props.actionProvider.handleHelp, id: 1 },
+    { text: "Metadata", handler: props.actionProvider.handleMetadataMenu, id: 2 },
+  ];
+
+  return (
+    <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+      {options.map((option) => (
+        <button
+          key={option.id}
+          onClick={option.handler}
+          style={{
+            padding: "6px 12px",
+            borderRadius: "8px",
+            border: "1px solid #007bff",
+            backgroundColor: "#007bff",
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: "14px",
+          }}
+        >
+          {option.text}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+export default MainMenu;
+import React from "react";
+
+const TablesWidget = (props) => {
+  const options = props.payload || [];
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+      {options.map((option) => (
+        <button
+          key={option.id}
+          onClick={option.handler}
+          style={{
+            padding: "6px 12px",
+            borderRadius: "8px",
+            border: "1px solid #28a745",
+            backgroundColor: "#28a745",
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: "14px",
+          }}
+        >
+          {option.text}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+export default TablesWidget;
+
+import { createChatBotMessage } from "react-chatbot-kit";
+import MainMenu from "./MainMenu";
+import TablesWidget from "./TablesWidget";
+
+const config = {
+  botName: "MetaBot",
+  initialMessages: [
+    createChatBotMessage("Hi! I can help you with:", {
+      widget: "mainMenu",
+    }),
+  ],
+  widgets: [
+    {
+      widgetName: "mainMenu",
+      widgetFunc: (props) => <MainMenu {...props} />,
+    },
+    {
+      widgetName: "tablesWidget",
+      widgetFunc: (props) => <TablesWidget {...props} />,
+    },
+  ],
+};
+
+export default config;
+
+import React from "react";
+import metadata from "./metadata.json";
 
 class ActionProvider {
   constructor(createChatBotMessage, setStateFunc) {
@@ -7,15 +94,13 @@ class ActionProvider {
     this.setState = setStateFunc;
   }
 
-  // ✅ Show Main Menu (Help + Metadata)
   handleInitialMenu = () => {
     const message = this.createChatBotMessage("Hi! I can help you with:", {
-      widget: "mainOptions",
+      widget: "mainMenu",
     });
     this.updateChatbotState(message);
   };
 
-  // ✅ Help Option
   handleHelp = () => {
     const message = this.createChatBotMessage(
       "This chatbot helps you explore database metadata. You can select a table to see its schema and description."
@@ -24,7 +109,6 @@ class ActionProvider {
     this.handleMetadataMenu();
   };
 
-  // ✅ Show Metadata Menu (tables as buttons)
   handleMetadataMenu = () => {
     const tables = Object.keys(metadata.tables);
     const options = tables.map((table) => ({
@@ -34,24 +118,22 @@ class ActionProvider {
     }));
 
     const message = this.createChatBotMessage("Here are the tables:", {
-      widget: "options",
+      widget: "tablesWidget",
       payload: options,
     });
     this.updateChatbotState(message);
   };
 
-  // ✅ Show Table Details
   handleTableDetails = (tableName) => {
     const table = metadata.tables[tableName];
     if (!table) {
       const message = this.createChatBotMessage(
-        `Sorry, I couldn't find details for table: ${tableName}`
+        `❌ Sorry, I couldn't find details for table: ${tableName}`
       );
       this.updateChatbotState(message);
       return;
     }
 
-    // Format schema as text
     let schemaText = table.columns
       .map((col) => `- ${col.name} (${col.type}): ${col.description}`)
       .join("\n");
@@ -62,7 +144,6 @@ class ActionProvider {
     this.updateChatbotState(message);
   };
 
-  // ✅ Update state
   updateChatbotState(message) {
     this.setState((prevState) => ({
       ...prevState,
