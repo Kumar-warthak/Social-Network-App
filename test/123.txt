@@ -153,3 +153,76 @@ class ActionProvider {
 }
 
 export default ActionProvider;
+
+import React from "react";
+import Chatbot from "react-chatbot-kit";
+import "react-chatbot-kit/build/main.css";
+
+// Chatbot files (all inside src/chatbot/)
+import config from "./chatbot/config";
+import ActionProvider from "./chatbot/ActionProvider";
+import MessageParser from "./chatbot/MessageParser";
+
+function App() {
+  return (
+    <div style={{ display: "flex", justifyContent: "center", marginTop: "50px" }}>
+      <Chatbot
+        config={config}
+        actionProvider={ActionProvider}
+        messageParser={MessageParser}
+      />
+    </div>
+  );
+}
+
+export default App;
+
+
+
+class MessageParser {
+  constructor(actionProvider) {
+    this.actionProvider = actionProvider;
+  }
+
+  parse(message) {
+    const lower = message.toLowerCase();
+
+    if (lower.includes("help")) {
+      this.actionProvider.handleHelp();
+    } else if (lower.includes("metadata")) {
+      this.actionProvider.handleMetadataMenu();
+    } else if (lower.includes("menu")) {
+      this.actionProvider.handleInitialMenu();
+    } else {
+      // Default → show main menu again
+      this.actionProvider.handleInitialMenu();
+    }
+  }
+}
+
+export default MessageParser;
+
+import { createChatBotMessage } from "react-chatbot-kit";
+import MainMenu from "./MainMenu";
+import TablesWidget from "./TablesWidget";
+
+const config = {
+  botName: "MetaBot",
+  initialMessages: [
+    createChatBotMessage("Hi! I can help you with:", {
+      widget: "mainMenu",
+    }),
+  ],
+  widgets: [
+    {
+      widgetName: "mainMenu",
+      widgetFunc: (props) => <MainMenu {...props} />,
+    },
+    {
+      widgetName: "tablesWidget",
+      widgetFunc: (props) => <TablesWidget {...props} />,
+    },
+  ],
+};
+
+export default config;
