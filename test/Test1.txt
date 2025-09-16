@@ -1,107 +1,117 @@
-using System;
-using System.Data;
-using System.Data.SqlClient;
-using System.IO;
-using System.Net;
-using System.Text;
-using System.Text.Json;
+import React, { useState } from "react";
+import Chatbot from "react-chatbot-kit";
+import "react-chatbot-kit/build/main.css";
 
-public class GraphUserToSql
-{
-    public static void Main()
-    {
-        string tenantId = "your-tenant-id";
-        string clientId = "your-client-id";
-        string clientSecret = "your-client-secret";
-        string sqlConnString = "Server=your-sql-server;Database=your-db;Integrated Security=true;";
-        string storedProc = "YourInsertUserProc";
-        string proxyUrl = "http://your-proxy-server:8080"; // leave empty "" if not needed
+import config from "./chatbot/config";
+import MessageParser from "./chatbot/MessageParser";
+import ActionProvider from "./chatbot/ActionProvider";
 
-        try
-        {
-            IWebProxy proxy = string.IsNullOrEmpty(proxyUrl) ? null : new WebProxy(proxyUrl, true)
-            {
-                Credentials = CredentialCache.DefaultCredentials
-            };
+function App() {
+  const [showBot, setShowBot] = useState(false);
 
-            string token = GetAccessToken(tenantId, clientId, clientSecret, proxy);
-            FetchAndInsertUsers(token, sqlConnString, storedProc, proxy);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Error: " + ex.Message);
-        }
-    }
+  const chatbotStyles = {
+    width: "500px",
+    height: "600px",
+    border: "2px solid #007bff",
+    borderRadius: "12px",
+    backgroundColor: "#f9f9f9",
+    padding: "10px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    position: "fixed",
+    bottom: "80px",
+    right: "20px",
+    zIndex: 1000,
+  };
 
-    static string GetAccessToken(string tenantId, string clientId, string clientSecret, IWebProxy proxy)
-    {
-        string url = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
-        string body = $"client_id={clientId}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret={clientSecret}&grant_type=client_credentials";
+  const buttonStyle = {
+    position: "fixed",
+    bottom: "20px",
+    right: "20px",
+    backgroundColor: "#007bff",
+    color: "#fff",
+    border: "none",
+    borderRadius: "50%",
+    width: "60px",
+    height: "60px",
+    fontSize: "24px",
+    cursor: "pointer",
+    boxShadow: "0 4px 8px rgba(0,0,0,0.2)",
+  };
 
-        byte[] byteArray = Encoding.UTF8.GetBytes(body);
-        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-        request.Method = "POST";
-        request.ContentType = "application/x-www-form-urlencoded";
-        request.ContentLength = byteArray.Length;
-        request.Proxy = proxy;
+  const closeButtonStyle = {
+    position: "absolute",
+    top: "5px",
+    right: "10px",
+    background: "none",
+    border: "none",
+    fontSize: "20px",
+    cursor: "pointer",
+    color: "#333",
+  };
 
-        using (Stream reqStream = request.GetRequestStream())
-        {
-            reqStream.Write(byteArray, 0, byteArray.Length);
-        }
+  return (
+    <>
+      {/* Floating chat button (only shows if bot is hidden) */}
+      {!showBot && (
+        <button style={buttonStyle} onClick={() => setShowBot(true)}>
+          💬
+        </button>
+      )}
 
-        using (WebResponse response = request.GetResponse())
-        using (StreamReader reader = new StreamReader(response.GetResponseStream()))
-        {
-            string json = reader.ReadToEnd();
-            using (JsonDocument doc = JsonDocument.Parse(json))
-            {
-                return doc.RootElement.GetProperty("access_token").GetString();
-            }
-        }
-    }
+      {/* Chatbot box */}
+      {showBot && (
+        <div style={chatbotStyles}>
+          {/* Close button inside chatbot */}
+          <button style={closeButtonStyle} onClick={() => setShowBot(false)}>
+            ❌
+          </button>
 
-    static void FetchAndInsertUsers(string token, string sqlConnString, string storedProc, IWebProxy proxy)
-    {
-        string nextLink = "https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName&$top=999";
-
-        using (SqlConnection conn = new SqlConnection(sqlConnString))
-        {
-            conn.Open();
-
-            while (!string.IsNullOrEmpty(nextLink))
-            {
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(nextLink);
-                request.Method = "GET";
-                request.Headers.Add("Authorization", "Bearer " + token);
-                request.Proxy = proxy;
-
-                using (WebResponse response = request.GetResponse())
-                using (StreamReader reader = new StreamReader(response.GetResponseStream()))
-                {
-                    string json = reader.ReadToEnd();
-                    using (JsonDocument doc = JsonDocument.Parse(json))
-                    {
-                        JsonElement root = doc.RootElement;
-                        foreach (JsonElement user in root.GetProperty("value").EnumerateArray())
-                        {
-                            string userJson = user.GetRawText();
-
-                            using (SqlCommand cmd = new SqlCommand(storedProc, conn))
-                            {
-                                cmd.CommandType = CommandType.StoredProcedure;
-                                cmd.Parameters.AddWithValue("@UserJson", userJson);
-                                cmd.ExecuteNonQuery();
-                            }
-                        }
-
-                        if (root.TryGetProperty("@odata.nextLink", out JsonElement nextLinkElement))
-                            nextLink = nextLinkElement.GetString();
-                        else
-                            nextLink = null;
-                    }
-                }
-            }
-        }
-    }
+          <Chatbot
+            config={config}
+            messageParser={MessageParser}
+            actionProvider={ActionProvider}
+          />
+        </div>
+      )}
+    </>
+  );
 }
+
+export default App;
+
+
+import { createChatBotMessage } from "react-chatbot-kit";
+import CustomMessage from "./CustomMessage";
+
+const config = {
+  botName: "MetsBot",
+  customComponents: {
+    botMessageBox: (props) => <CustomMessage {...props} isBot={true} />,
+    userChatMessage: (props) => <CustomMessage {...props} isBot={false} />,
+  },
+  initialMessages: [
+    createChatBotMessage("Hi! I can help you. 👋"),
+  ],
+};
+
+export default config;
+
+import React from "react";
+
+const CustomMessage = ({ message, isBot }) => {
+  const messageStyle = {
+    maxWidth: "80%",
+    padding: "10px 14px",
+    margin: "8px 0",
+    borderRadius: "12px",
+    lineHeight: "1.4",
+    fontSize: "15px",
+    color: isBot ? "#fff" : "#333",
+    backgroundColor: isBot ? "#007bff" : "#e6e6e6",
+    alignSelf: isBot ? "flex-start" : "flex-end",
+  };
+
+  return <div style={messageStyle}>{message}</div>;
+};
+
+export default CustomMessage;
