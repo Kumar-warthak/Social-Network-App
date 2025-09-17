@@ -1,228 +1,44 @@
-import React from "react";
-
-const MainMenu = (props) => {
-  const options = [
-    { text: "Help", handler: props.actionProvider.handleHelp, id: 1 },
-    { text: "Metadata", handler: props.actionProvider.handleMetadataMenu, id: 2 },
-  ];
-
-  return (
-    <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-      {options.map((option) => (
-        <button
-          key={option.id}
-          onClick={option.handler}
-          style={{
-            padding: "6px 12px",
-            borderRadius: "8px",
-            border: "1px solid #007bff",
-            backgroundColor: "#007bff",
-            color: "#fff",
-            cursor: "pointer",
-            fontSize: "14px",
-          }}
-        >
-          {option.text}
-        </button>
-      ))}
-    </div>
-  );
-};
-
-export default MainMenu;
-import React from "react";
-
-const TablesWidget = (props) => {
-  const options = props.payload || [];
-
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
-      {options.map((option) => (
-        <button
-          key={option.id}
-          onClick={option.handler}
-          style={{
-            padding: "6px 12px",
-            borderRadius: "8px",
-            border: "1px solid #28a745",
-            backgroundColor: "#28a745",
-            color: "#fff",
-            cursor: "pointer",
-            fontSize: "14px",
-          }}
-        >
-          {option.text}
-        </button>
-      ))}
-    </div>
-  );
-};
-
-export default TablesWidget;
-
-import { createChatBotMessage } from "react-chatbot-kit";
-import MainMenu from "./MainMenu";
-import TablesWidget from "./TablesWidget";
-
-const config = {
-  botName: "MetaBot",
-  initialMessages: [
-    createChatBotMessage("Hi! I can help you with:", {
-      widget: "mainMenu",
-    }),
-  ],
-  widgets: [
-    {
-      widgetName: "mainMenu",
-      widgetFunc: (props) => <MainMenu {...props} />,
-    },
-    {
-      widgetName: "tablesWidget",
-      widgetFunc: (props) => <TablesWidget {...props} />,
-    },
-  ],
-};
-
-export default config;
-
-import React from "react";
-import metadata from "./metadata.json";
-
-class ActionProvider {
-  constructor(createChatBotMessage, setStateFunc) {
-    this.createChatBotMessage = createChatBotMessage;
-    this.setState = setStateFunc;
-  }
-
-  handleInitialMenu = () => {
-    const message = this.createChatBotMessage("Hi! I can help you with:", {
-      widget: "mainMenu",
-    });
-    this.updateChatbotState(message);
-  };
-
-  handleHelp = () => {
-    const message = this.createChatBotMessage(
-      "This chatbot helps you explore database metadata. You can select a table to see its schema and description."
-    );
-    this.updateChatbotState(message);
-    this.handleMetadataMenu();
-  };
-
-  handleMetadataMenu = () => {
-    const tables = Object.keys(metadata.tables);
-    const options = tables.map((table) => ({
-      text: table,
-      handler: () => this.handleTableDetails(table),
-      id: table,
-    }));
-
-    const message = this.createChatBotMessage("Here are the tables:", {
-      widget: "tablesWidget",
-      payload: options,
-    });
-    this.updateChatbotState(message);
-  };
-
-  handleTableDetails = (tableName) => {
-    const table = metadata.tables[tableName];
-    if (!table) {
-      const message = this.createChatBotMessage(
-        `❌ Sorry, I couldn't find details for table: ${tableName}`
-      );
-      this.updateChatbotState(message);
-      return;
-    }
-
-    let schemaText = table.columns
-      .map((col) => `- ${col.name} (${col.type}): ${col.description}`)
-      .join("\n");
-
-    const message = this.createChatBotMessage(
-      `📌 Table: ${tableName}\n📝 Description: ${table.description}\n\nColumns:\n${schemaText}`
-    );
-    this.updateChatbotState(message);
-  };
-
-  updateChatbotState(message) {
-    this.setState((prevState) => ({
-      ...prevState,
-      messages: [...prevState.messages, message],
-    }));
-  }
+{
+  "name": "Query/Code Generation",
+  "description": "Generates SQL or programming code queries from user input.",
+  "features": [
+    "Generate SQL queries from natural language",
+    "Generate Python or JavaScript code snippets",
+    "Auto syntax validation",
+    "Supports multiple databases"
+  ]
 }
 
-export default ActionProvider;
-
-import React from "react";
-import Chatbot from "react-chatbot-kit";
-import "react-chatbot-kit/build/main.css";
-
-// Chatbot files (all inside src/chatbot/)
-import config from "./chatbot/config";
-import ActionProvider from "./chatbot/ActionProvider";
-import MessageParser from "./chatbot/MessageParser";
-
-function App() {
-  return (
-    <div style={{ display: "flex", justifyContent: "center", marginTop: "50px" }}>
-      <Chatbot
-        config={config}
-        actionProvider={ActionProvider}
-        messageParser={MessageParser}
-      />
-    </div>
-  );
+{
+  "name": "Query/Code Summarization",
+  "description": "Summarizes long queries or code snippets for easier understanding.",
+  "features": [
+    "Summarize SQL queries",
+    "Summarize Python/JavaScript code",
+    "Highlight key operations and tables",
+    "Provide plain-language explanation"
+  ]
 }
 
-export default App;
 
-
-
-class MessageParser {
-  constructor(actionProvider) {
-    this.actionProvider = actionProvider;
-  }
-
-  parse(message) {
-    const lower = message.toLowerCase();
-
-    if (lower.includes("help")) {
-      this.actionProvider.handleHelp();
-    } else if (lower.includes("metadata")) {
-      this.actionProvider.handleMetadataMenu();
-    } else if (lower.includes("menu")) {
-      this.actionProvider.handleInitialMenu();
-    } else {
-      // Default → show main menu again
-      this.actionProvider.handleInitialMenu();
-    }
-  }
+{
+  "name": "Query/Code Conversion",
+  "description": "Converts queries or code from one language or format to another.",
+  "features": [
+    "Convert SQL to NoSQL or vice versa",
+    "Convert Python code to JavaScript",
+    "Optimize query structure during conversion",
+    "Preserve logic and variable names"
+  ]
 }
 
-export default MessageParser;
-
-import { createChatBotMessage } from "react-chatbot-kit";
-import MainMenu from "./MainMenu";
-import TablesWidget from "./TablesWidget";
-
-const config = {
-  botName: "MetaBot",
-  initialMessages: [
-    createChatBotMessage("Hi! I can help you with:", {
-      widget: "mainMenu",
-    }),
-  ],
-  widgets: [
-    {
-      widgetName: "mainMenu",
-      widgetFunc: (props) => <MainMenu {...props} />,
-    },
-    {
-      widgetName: "tablesWidget",
-      widgetFunc: (props) => <TablesWidget {...props} />,
-    },
-  ],
-};
-
-export default config;
+{
+  "name": "Query/Code Optimization",
+  "description": "Optimizes queries or code for better performance and efficiency.",
+  "features": [
+    "Optimize SQL queries for faster execution",
+    "Refactor code to reduce complexity",
+    "Suggest indexing for databases",
+    "Improve readability and maintainability"
+  ]
+}
