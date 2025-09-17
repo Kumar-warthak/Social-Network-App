@@ -378,3 +378,23 @@ const ToolsWidget = () => {
 };
 
 export default ToolsWidget;
+
+{
+  "toolset": "Data Management Tools",
+  "type": "ETL Suite",
+  "version": "2.3.1",
+  "provider": "OpenData Inc",
+  "categories": [
+    {
+      "name": "Query Builder",
+      "description": "Helps construct SQL queries without writing code",
+      "features": ["Drag & drop tables", "Auto join detection", "Query preview"]
+    },
+    {
+      "name": "Data Exporter",
+      "description": "Export data in multiple formats",
+      "features": ["CSV", "Excel", "JSON", "Database dump"]
+    }
+  ]
+}
+
