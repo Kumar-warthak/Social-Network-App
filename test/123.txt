@@ -1,163 +1,42 @@
-class ActionProvider {
-  constructor(createChatBotMessage, setStateFunc) {
-    this.createChatBotMessage = createChatBotMessage;
-    this.setState = setStateFunc;
-  }
-
-  greet = () => {
-    const message = this.createChatBotMessage("Hi! I can help you with:");
-    this.addMessage(message);
-
-    const menu = this.createChatBotMessage("Choose an option:", {
-      widget: "mainMenu",
-    });
-    this.addMessage(menu);
-  };
-
-  showMetadataMenu = () => {
-    const message = this.createChatBotMessage("Here is the Metadata menu:", {
-      widget: "metadataWidget",
-    });
-    this.addMessage(message);
-  };
-
-  showToolsMenu = () => {
-    const message = this.createChatBotMessage("Here is the Tools menu:", {
-      widget: "toolsWidget",
-    });
-    this.addMessage(message);
-  };
-
-  clearChat = () => {
-    this.setState((prev) => ({
-      ...prev,
-      messages: [
-        this.createChatBotMessage("Hi! I can help you with:", {
-          widget: "mainMenu",
-        }),
-      ],
-    }));
-  };
-
-  addMessage = (message) => {
-    this.setState((prev) => ({
-      ...prev,
-      messages: [...prev.messages, message],
-    }));
-  };
-}
-
-export default ActionProvider;
-
-
-class MessageParser {
-  constructor(actionProvider) {
-    this.actionProvider = actionProvider;
-  }
-
-  parse(message) {
-    const lowerCaseMessage = message.toLowerCase();
-
-    if (lowerCaseMessage.includes("hi") || lowerCaseMessage.includes("hello")) {
-      this.actionProvider.greet();
-    } else if (lowerCaseMessage.includes("metadata")) {
-      this.actionProvider.showMetadataMenu();
-    } else if (lowerCaseMessage.includes("tool")) {
-      this.actionProvider.showToolsMenu();
-    } else {
-      this.actionProvider.greet();
-    }
-  }
-}
-
-export default MessageParser;
-
-
-import { createChatBotMessage } from "react-chatbot-kit";
-import MainMenu from "./MainMenu";
-import MetadataWidget from "./MetadataWidget";
-import ToolsWidget from "./ToolsWidget";
-
-const config = {
-  botName: "Metadata Bot",
-  initialMessages: [
-    createChatBotMessage("Hi! I can help you with:", {
-      widget: "mainMenu",
-    }),
-  ],
-  customStyles: {
-    botMessageBox: { backgroundColor: "#007bff" },
-    chatButton: { backgroundColor: "#007bff" },
-  },
-  widgets: [
-    { widgetName: "mainMenu", widgetFunc: (props) => <MainMenu {...props} /> },
-    { widgetName: "metadataWidget", widgetFunc: (props) => <MetadataWidget {...props} /> },
-    { widgetName: "toolsWidget", widgetFunc: (props) => <ToolsWidget {...props} /> },
-  ],
-};
-
-export default config;
-
-
-import React from "react";
-
-const MainMenu = (props) => {
-  const options = [
-    { text: "Help about Tool", handler: props.actionProvider.showToolsMenu, id: 1 },
-    { text: "Metadata", handler: props.actionProvider.showMetadataMenu, id: 2 },
-  ];
-
-  return (
-    <div style={{ padding: "10px" }}>
-      {options.map((option) => (
-        <button
-          key={option.id}
-          onClick={option.handler}
-          style={{
-            margin: "5px",
-            padding: "8px 14px",
-            borderRadius: "6px",
-            border: "1px solid #007bff",
-            background: "#f0f8ff",
-            cursor: "pointer",
-          }}
-        >
-          {option.text}
-        </button>
-      ))}
-    </div>
-  );
-};
-
-export default MainMenu;
-
-
-
 
 import React, { useState } from "react";
 import brokerage from "./metadataJson/brokerage.json";
 import wimClient from "./metadataJson/wimClient.json";
 
 const MetadataWidget = (props) => {
+  const [openDataset, setOpenDataset] = useState(null);
   const [openTable, setOpenTable] = useState(null);
-  const [selectedData, setSelectedData] = useState(null);
 
-  const toggleTable = (tableName, data) => {
-    setSelectedData(data);
+  const datasets = [
+    { name: "Brokerage Dataset", data: brokerage },
+    { name: "WIM Client Dataset", data: wimClient },
+  ];
+
+  const toggleDataset = (datasetName) => {
+    setOpenDataset(openDataset === datasetName ? null : datasetName);
+    setOpenTable(null); // reset table when changing dataset
+  };
+
+  const toggleTable = (tableName) => {
     setOpenTable(openTable === tableName ? null : tableName);
   };
 
-  const metadataOptions = [
-    { text: "Brokerage Dataset", data: brokerage, id: 1 },
-    { text: "WIM Client Dataset", data: wimClient, id: 2 },
-  ];
-
   return (
     <div style={{ padding: "10px" }}>
-      {metadataOptions.map((option) => (
-        <div key={option.id}>
+      {datasets.map((dataset, idx) => (
+        <div
+          key={idx}
+          style={{
+            marginBottom: "10px",
+            border: "1px solid #28a745",
+            borderRadius: "6px",
+            overflow: "hidden",
+            background: "#f9fff9",
+          }}
+        >
+          {/* Dataset Header */}
           <button
-            onClick={() => toggleTable(option.text, option.data)}
+            onClick={() => toggleDataset(dataset.name)}
             style={{
               width: "100%",
               textAlign: "left",
@@ -166,23 +45,60 @@ const MetadataWidget = (props) => {
               border: "none",
               cursor: "pointer",
               fontWeight: "bold",
-              marginTop: "5px",
             }}
           >
-            {option.text} {openTable === option.text ? "▲" : "▼"}
+            {dataset.name} {openDataset === dataset.name ? "▲" : "▼"}
           </button>
 
-          {openTable === option.text && selectedData && (
-            <div style={{ padding: "10px", background: "#fff", border: "1px solid #28a745", marginTop: "5px" }}>
-              <p><strong>Server:</strong> {selectedData.server}</p>
-              <p><strong>Schema:</strong> {selectedData.schema}</p>
-              <p><strong>Description:</strong> {selectedData.description}</p>
-              <p><strong>Columns:</strong></p>
-              <ul>
-                {selectedData.columns.map((col, i) => (
-                  <li key={i}><strong>{col.name}</strong>: {col.description}</li>
-                ))}
-              </ul>
+          {/* Dataset Content */}
+          {openDataset === dataset.name && (
+            <div style={{ padding: "10px", background: "#fff", borderTop: "1px solid #28a745" }}>
+              <p><strong>Server:</strong> {dataset.data.serverName}</p>
+              <p><strong>Database:</strong> {dataset.data.database}</p>
+              <p><strong>Schema:</strong> {dataset.data.schema}</p>
+
+              {/* Tables Accordion */}
+              {dataset.data.tables?.map((table, i) => (
+                <div
+                  key={i}
+                  style={{
+                    marginTop: "10px",
+                    border: "1px solid #28a745",
+                    borderRadius: "6px",
+                    overflow: "hidden",
+                    background: "#f0fff0",
+                  }}
+                >
+                  <button
+                    onClick={() => toggleTable(table.name)}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px",
+                      background: "#d0f0d0",
+                      border: "none",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {table.name} {openTable === table.name ? "▲" : "▼"}
+                  </button>
+
+                  {openTable === table.name && (
+                    <div style={{ padding: "8px", background: "#fff", borderTop: "1px solid #28a745" }}>
+                      <p><strong>Description:</strong> {table.description}</p>
+                      <p><strong>Columns:</strong></p>
+                      <ul style={{ paddingLeft: "20px", margin: 0 }}>
+                        {table.columns?.map((col, j) => (
+                          <li key={j}>
+                            <strong>{col.name}</strong>: {col.description}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -206,82 +122,3 @@ const MetadataWidget = (props) => {
 };
 
 export default MetadataWidget;
-
-
-
-
-import React, { useState } from "react";
-import queryGeneration from "./toolsJson/queryGeneration.json";
-import querySummarization from "./toolsJson/querySummarization.json";
-import queryConversion from "./toolsJson/queryConversion.json";
-import queryOptimization from "./toolsJson/queryOptimization.json";
-
-const ToolsWidget = (props) => {
-  const [openTool, setOpenTool] = useState(null);
-  const [selectedTool, setSelectedTool] = useState(null);
-
-  const toggleTool = (toolName, data) => {
-    setSelectedTool(data);
-    setOpenTool(openTool === toolName ? null : toolName);
-  };
-
-  const toolsOptions = [
-    { text: "Query/Code Generation", data: queryGeneration, id: 1 },
-    { text: "Query/Code Summarization", data: querySummarization, id: 2 },
-    { text: "Query/Code Conversion", data: queryConversion, id: 3 },
-    { text: "Query/Code Optimization", data: queryOptimization, id: 4 },
-  ];
-
-  return (
-    <div style={{ padding: "10px" }}>
-      {toolsOptions.map((tool) => (
-        <div key={tool.id}>
-          <button
-            onClick={() => toggleTool(tool.text, tool.data)}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              padding: "10px",
-              background: "#e3f2fd",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: "bold",
-              marginTop: "5px",
-            }}
-          >
-            {tool.text} {openTool === tool.text ? "▲" : "▼"}
-          </button>
-
-          {openTool === tool.text && selectedTool && (
-            <div style={{ padding: "10px", background: "#fff", border: "1px solid #007bff", marginTop: "5px" }}>
-              <p><strong>Description:</strong> {selectedTool.description}</p>
-              <p><strong>Features:</strong></p>
-              <ul>
-                {selectedTool.features.map((f, i) => (<li key={i}>{f}</li>))}
-              </ul>
-            </div>
-          )}
-        </div>
-      ))}
-
-      <button
-        onClick={props.actionProvider.clearChat}
-        style={{
-          marginTop: "10px",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          border: "1px solid #007bff",
-          background: "#f0f8ff",
-          cursor: "pointer",
-        }}
-      >
-        🔄 Back to Main Menu
-      </button>
-    </div>
-  );
-};
-
-export default ToolsWidget;
-
-
-
