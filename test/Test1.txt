@@ -28,6 +28,7 @@ function App() {
             fontSize: "24px",
             cursor: "pointer",
             boxShadow: "0px 4px 6px rgba(0,0,0,0.2)",
+            zIndex: 1100,
           }}
         >
           💬
@@ -41,7 +42,7 @@ function App() {
             position: "fixed",
             bottom: "80px",
             right: "20px",
-            width: "400px",
+            width: "420px",
             maxHeight: "600px",
             border: "2px solid #007bff",
             borderRadius: "12px",
@@ -49,8 +50,11 @@ function App() {
             backgroundColor: "#fff",
             boxShadow: "0px 8px 15px rgba(0,0,0,0.3)",
             zIndex: 1000,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
+          {/* Header */}
           <div
             style={{
               backgroundColor: "#007bff",
@@ -75,11 +79,15 @@ function App() {
               ✖
             </button>
           </div>
-          <Chatbot
-            config={config}
-            messageParser={MessageParser}
-            actionProvider={ActionProvider}
-          />
+
+          {/* Chatbot Body */}
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <Chatbot
+              config={config}
+              messageParser={MessageParser}
+              actionProvider={ActionProvider}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -87,6 +95,9 @@ function App() {
 }
 
 export default App;
+
+
+
 
 class ActionProvider {
   constructor(createChatBotMessage, setStateFunc) {
@@ -105,12 +116,16 @@ class ActionProvider {
   };
 
   showMetadataMenu = () => {
-    const message = this.createChatBotMessage(
-      "Here are the tables from metadata:",
-      {
-        widget: "tablesWidget",
-      }
-    );
+    const message = this.createChatBotMessage("Here is the Metadata menu:", {
+      widget: "metadataWidget",
+    });
+    this.addMessage(message);
+  };
+
+  showToolsMenu = () => {
+    const message = this.createChatBotMessage("Here is the Tools menu:", {
+      widget: "toolsWidget",
+    });
     this.addMessage(message);
   };
 
@@ -124,6 +139,9 @@ class ActionProvider {
 
 export default ActionProvider;
 
+
+
+
 class MessageParser {
   constructor(actionProvider) {
     this.actionProvider = actionProvider;
@@ -136,6 +154,8 @@ class MessageParser {
       this.actionProvider.greet();
     } else if (lowerCaseMessage.includes("metadata")) {
       this.actionProvider.showMetadataMenu();
+    } else if (lowerCaseMessage.includes("tool")) {
+      this.actionProvider.showToolsMenu();
     } else {
       this.actionProvider.greet(); // default menu
     }
@@ -144,9 +164,12 @@ class MessageParser {
 
 export default MessageParser;
 
+
+
 import { createChatBotMessage } from "react-chatbot-kit";
 import MainMenu from "./MainMenu";
-import TablesWidget from "./TablesWidget";
+import MetadataWidget from "./MetadataWidget";
+import ToolsWidget from "./ToolsWidget";
 
 const config = {
   botName: "Metadata Bot",
@@ -169,8 +192,12 @@ const config = {
       widgetFunc: (props) => <MainMenu {...props} />,
     },
     {
-      widgetName: "tablesWidget",
-      widgetFunc: (props) => <TablesWidget {...props} />,
+      widgetName: "metadataWidget",
+      widgetFunc: (props) => <MetadataWidget {...props} />,
+    },
+    {
+      widgetName: "toolsWidget",
+      widgetFunc: (props) => <ToolsWidget {...props} />,
     },
   ],
 };
@@ -181,7 +208,7 @@ import React from "react";
 
 const MainMenu = (props) => {
   const options = [
-    { text: "Help about Tool", handler: props.actionProvider.greet, id: 1 },
+    { text: "Help about Tool", handler: props.actionProvider.showToolsMenu, id: 1 },
     { text: "Metadata", handler: props.actionProvider.showMetadataMenu, id: 2 },
   ];
 
@@ -209,10 +236,11 @@ const MainMenu = (props) => {
 
 export default MainMenu;
 
+
 import React, { useState } from "react";
 import metadata from "./metadata.json";
 
-const TablesWidget = () => {
+const MetadataWidget = () => {
   const [openTable, setOpenTable] = useState(null);
 
   const toggleTable = (tableName) => {
@@ -221,6 +249,12 @@ const TablesWidget = () => {
 
   return (
     <div style={{ padding: "10px" }}>
+      <h4>
+        {metadata.database} ({metadata.relationalDatabase})
+      </h4>
+      <p><b>Server:</b> {metadata.server}</p>
+      <p><b>Schema:</b> {metadata.schema}</p>
+
       {metadata.tables.map((table, index) => (
         <div
           key={index}
@@ -260,9 +294,7 @@ const TablesWidget = () => {
               <p>
                 <strong>Description:</strong> {table.description}
               </p>
-              <p>
-                <strong>Columns:</strong>
-              </p>
+              <p><strong>Columns:</strong></p>
               <ul style={{ paddingLeft: "20px", margin: 0 }}>
                 {table.columns.map((col, i) => (
                   <li key={i}>
@@ -278,5 +310,71 @@ const TablesWidget = () => {
   );
 };
 
-export default TablesWidget;
+export default MetadataWidget;
 
+import React, { useState } from "react";
+import tools from "./tools.json";
+
+const ToolsWidget = () => {
+  const [openTool, setOpenTool] = useState(null);
+
+  const toggleTool = (toolName) => {
+    setOpenTool(openTool === toolName ? null : toolName);
+  };
+
+  return (
+    <div style={{ padding: "10px" }}>
+      {tools.map((tool, index) => (
+        <div
+          key={index}
+          style={{
+            marginBottom: "10px",
+            border: "1px solid #007bff",
+            borderRadius: "6px",
+            overflow: "hidden",
+            background: "#f0f8ff",
+          }}
+        >
+          {/* Tool Header */}
+          <button
+            onClick={() => toggleTool(tool.name)}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "10px",
+              background: "#e3f2fd",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
+            {tool.name} {openTool === tool.name ? "▲" : "▼"}
+          </button>
+
+          {/* Collapsible Content */}
+          {openTool === tool.name && (
+            <div
+              style={{
+                padding: "10px",
+                background: "#fff",
+                borderTop: "1px solid #007bff",
+              }}
+            >
+              <p>
+                <strong>Description:</strong> {tool.description}
+              </p>
+              <p><strong>Features:</strong></p>
+              <ul style={{ paddingLeft: "20px", margin: 0 }}>
+                {tool.features.map((feature, i) => (
+                  <li key={i}>{feature}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export default ToolsWidget;
