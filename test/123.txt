@@ -1,44 +1,374 @@
-{
-  "name": "Query/Code Generation",
-  "description": "Generates SQL or programming code queries from user input.",
-  "features": [
-    "Generate SQL queries from natural language",
-    "Generate Python or JavaScript code snippets",
-    "Auto syntax validation",
-    "Supports multiple databases"
-  ]
+class ActionProvider {
+  constructor(createChatBotMessage, setStateFunc) {
+    this.createChatBotMessage = createChatBotMessage;
+    this.setState = setStateFunc;
+  }
+
+  greet = () => {
+    const message = this.createChatBotMessage("Hi! I can help you with:");
+    this.addMessage(message);
+
+    const menu = this.createChatBotMessage("Choose an option:", {
+      widget: "mainMenu",
+    });
+    this.addMessage(menu);
+  };
+
+  showMetadataMenu = () => {
+    const message = this.createChatBotMessage("Here is the Metadata menu:", {
+      widget: "metadataWidget",
+    });
+    this.addMessage(message);
+  };
+
+  showToolsMenu = () => {
+    const message = this.createChatBotMessage("Here is the Tools menu:", {
+      widget: "toolsWidget",
+    });
+    this.addMessage(message);
+  };
+
+  showMetadataSubmenu = (jsonFileName) => {
+    const message = this.createChatBotMessage("Loading Metadata...", {
+      widget: "metadataSubmenuWidget",
+      payload: jsonFileName,
+    });
+    this.addMessage(message);
+  };
+
+  showToolSubmenu = (jsonFileName) => {
+    const message = this.createChatBotMessage("Loading Tool...", {
+      widget: "toolSubmenuWidget",
+      payload: jsonFileName,
+    });
+    this.addMessage(message);
+  };
+
+  clearChat = () => {
+    this.setState((prev) => ({
+      ...prev,
+      messages: [
+        this.createChatBotMessage("Hi! I can help you with:", {
+          widget: "mainMenu",
+        }),
+      ],
+    }));
+  };
+
+  addMessage = (message) => {
+    this.setState((prev) => ({
+      ...prev,
+      messages: [...prev.messages, message],
+    }));
+  };
 }
 
-{
-  "name": "Query/Code Summarization",
-  "description": "Summarizes long queries or code snippets for easier understanding.",
-  "features": [
-    "Summarize SQL queries",
-    "Summarize Python/JavaScript code",
-    "Highlight key operations and tables",
-    "Provide plain-language explanation"
-  ]
-}
+export default ActionProvider;
 
 
-{
-  "name": "Query/Code Conversion",
-  "description": "Converts queries or code from one language or format to another.",
-  "features": [
-    "Convert SQL to NoSQL or vice versa",
-    "Convert Python code to JavaScript",
-    "Optimize query structure during conversion",
-    "Preserve logic and variable names"
-  ]
+class MessageParser {
+  constructor(actionProvider) {
+    this.actionProvider = actionProvider;
+  }
+
+  parse(message) {
+    const lowerCaseMessage = message.toLowerCase();
+
+    if (lowerCaseMessage.includes("hi") || lowerCaseMessage.includes("hello")) {
+      this.actionProvider.greet();
+    } else if (lowerCaseMessage.includes("metadata")) {
+      this.actionProvider.showMetadataMenu();
+    } else if (lowerCaseMessage.includes("tool")) {
+      this.actionProvider.showToolsMenu();
+    } else {
+      this.actionProvider.greet(); // default menu
+    }
+  }
 }
 
-{
-  "name": "Query/Code Optimization",
-  "description": "Optimizes queries or code for better performance and efficiency.",
-  "features": [
-    "Optimize SQL queries for faster execution",
-    "Refactor code to reduce complexity",
-    "Suggest indexing for databases",
-    "Improve readability and maintainability"
-  ]
-}
+export default MessageParser;
+
+
+import { createChatBotMessage } from "react-chatbot-kit";
+import MainMenu from "./MainMenu";
+import MetadataWidget from "./MetadataWidget";
+import ToolsWidget from "./ToolsWidget";
+import MetadataSubmenuWidget from "./MetadataSubmenuWidget";
+import ToolSubmenuWidget from "./ToolSubmenuWidget";
+
+const config = {
+  botName: "Metadata Bot",
+  initialMessages: [
+    createChatBotMessage("Hi! I can help you with:", {
+      widget: "mainMenu",
+    }),
+  ],
+  customStyles: {
+    botMessageBox: {
+      backgroundColor: "#007bff",
+    },
+    chatButton: {
+      backgroundColor: "#007bff",
+    },
+  },
+  widgets: [
+    {
+      widgetName: "mainMenu",
+      widgetFunc: (props) => <MainMenu {...props} />,
+    },
+    {
+      widgetName: "metadataWidget",
+      widgetFunc: (props) => <MetadataWidget {...props} />,
+    },
+    {
+      widgetName: "toolsWidget",
+      widgetFunc: (props) => <ToolsWidget {...props} />,
+    },
+    {
+      widgetName: "metadataSubmenuWidget",
+      widgetFunc: (props) => <MetadataSubmenuWidget {...props} />,
+    },
+    {
+      widgetName: "toolSubmenuWidget",
+      widgetFunc: (props) => <ToolSubmenuWidget {...props} />,
+    },
+  ],
+};
+
+export default config;
+
+
+import React from "react";
+
+const MainMenu = (props) => {
+  const options = [
+    { text: "Query/Code Generation", handler: () => props.actionProvider.showToolSubmenu("queryGeneration.json"), id: 1 },
+    { text: "Query/Code Summarization", handler: () => props.actionProvider.showToolSubmenu("querySummarization.json"), id: 2 },
+    { text: "Query/Code Conversion", handler: () => props.actionProvider.showToolSubmenu("queryConversion.json"), id: 3 },
+    { text: "Query/Code Optimization", handler: () => props.actionProvider.showToolSubmenu("queryOptimization.json"), id: 4 },
+    { text: "Metadata - Brokerage Dataset", handler: () => props.actionProvider.showMetadataSubmenu("brokerage.json"), id: 5 },
+    { text: "Metadata - WIM Client Dataset", handler: () => props.actionProvider.showMetadataSubmenu("wimClient.json"), id: 6 },
+  ];
+
+  return (
+    <div style={{ padding: "10px" }}>
+      {options.map((option) => (
+        <button
+          key={option.id}
+          onClick={option.handler}
+          style={{
+            margin: "5px",
+            padding: "8px 14px",
+            borderRadius: "6px",
+            border: "1px solid #007bff",
+            background: "#f0f8ff",
+            cursor: "pointer",
+          }}
+        >
+          {option.text}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+export default MainMenu;
+
+
+import React from "react";
+
+const MetadataWidget = (props) => {
+  const metadataOptions = [
+    { text: "Brokerage Dataset", file: "brokerage.json" },
+    { text: "WIM Client Dataset", file: "wimClient.json" },
+  ];
+
+  return (
+    <div style={{ padding: "10px" }}>
+      <h4>Metadata Menu</h4>
+      {metadataOptions.map((option, index) => (
+        <button
+          key={index}
+          onClick={() => props.actionProvider.showMetadataSubmenu(option.file)}
+          style={{
+            margin: "5px",
+            padding: "8px 14px",
+            borderRadius: "6px",
+            border: "1px solid #28a745",
+            background: "#f0fff0",
+            cursor: "pointer",
+          }}
+        >
+          {option.text}
+        </button>
+      ))}
+
+      <button
+        onClick={props.actionProvider.clearChat}
+        style={{
+          marginTop: "10px",
+          padding: "6px 12px",
+          borderRadius: "6px",
+          border: "1px solid #28a745",
+          background: "#f0fff0",
+          cursor: "pointer",
+        }}
+      >
+        🔄 Back to Main Menu
+      </button>
+    </div>
+  );
+};
+
+export default MetadataWidget;
+
+
+
+
+import React from "react";
+
+const ToolsWidget = (props) => {
+  const toolsOptions = [
+    { text: "Query/Code Generation", file: "queryGeneration.json" },
+    { text: "Query/Code Summarization", file: "querySummarization.json" },
+    { text: "Query/Code Conversion", file: "queryConversion.json" },
+    { text: "Query/Code Optimization", file: "queryOptimization.json" },
+  ];
+
+  return (
+    <div style={{ padding: "10px" }}>
+      <h4>Tools Menu</h4>
+      {toolsOptions.map((option, index) => (
+        <button
+          key={index}
+          onClick={() => props.actionProvider.showToolSubmenu(option.file)}
+          style={{
+            margin: "5px",
+            padding: "8px 14px",
+            borderRadius: "6px",
+            border: "1px solid #007bff",
+            background: "#f0f8ff",
+            cursor: "pointer",
+          }}
+        >
+          {option.text}
+        </button>
+      ))}
+
+      <button
+        onClick={props.actionProvider.clearChat}
+        style={{
+          marginTop: "10px",
+          padding: "6px 12px",
+          borderRadius: "6px",
+          border: "1px solid #007bff",
+          background: "#f0f8ff",
+          cursor: "pointer",
+        }}
+      >
+        🔄 Back to Main Menu
+      </button>
+    </div>
+  );
+};
+
+export default ToolsWidget;
+
+
+
+
+
+import React, { useEffect, useState } from "react";
+
+const MetadataSubmenuWidget = (props) => {
+  const [metadata, setMetadata] = useState(null);
+
+  useEffect(() => {
+    if (!props.widgetState || !props.widgetState.payload) return;
+
+    import(`./metadataJson/${props.widgetState.payload}`)
+      .then((data) => setMetadata(data.default))
+      .catch((err) => console.error(err));
+  }, [props.widgetState]);
+
+  if (!metadata) return <div>Loading...</div>;
+
+  return (
+    <div style={{ padding: "10px" }}>
+      <h4>{metadata.name}</h4>
+      <p><strong>Server:</strong> {metadata.server}</p>
+      <p><strong>Schema:</strong> {metadata.schema}</p>
+      <p><strong>Description:</strong> {metadata.description}</p>
+      <p><strong>Columns:</strong></p>
+      <ul>
+        {metadata.columns.map((col, i) => (
+          <li key={i}>
+            <strong>{col.name}</strong>: {col.description}
+          </li>
+        ))}
+      </ul>
+
+      <button
+        onClick={props.actionProvider.clearChat}
+        style={{
+          marginTop: "10px",
+          padding: "6px 12px",
+          borderRadius: "6px",
+          border: "1px solid #28a745",
+          background: "#f0fff0",
+          cursor: "pointer",
+        }}
+      >
+        🔄 Back to Main Menu
+      </button>
+    </div>
+  );
+};
+
+export default MetadataSubmenuWidget;
+
+
+import React, { useEffect, useState } from "react";
+
+const ToolSubmenuWidget = (props) => {
+  const [toolData, setToolData] = useState(null);
+
+  useEffect(() => {
+    if (!props.widgetState || !props.widgetState.payload) return;
+
+    import(`./toolsJson/${props.widgetState.payload}`)
+      .then((data) => setToolData(data.default))
+      .catch((err) => console.error(err));
+  }, [props.widgetState]);
+
+  if (!toolData) return <div>Loading...</div>;
+
+  return (
+    <div style={{ padding: "10px" }}>
+      <h4>{toolData.name}</h4>
+      <p><strong>Description:</strong> {toolData.description}</p>
+      <p><strong>Features:</strong></p>
+      <ul>
+        {toolData.features.map((f, i) => (
+          <li key={i}>{f}</li>
+        ))}
+      </ul>
+
+      <button
+        onClick={props.actionProvider.clearChat}
+        style={{
+          marginTop: "10px",
+          padding: "6px 12px",
+          borderRadius: "6px",
+          border: "1px solid #007bff",
+          background: "#f0f8ff",
+          cursor: "pointer",
+        }}
+      >
+        🔄 Back to Main Menu
+      </button>
+    </div>
+  );
+};
+
+export default ToolSubmenuWidget;
