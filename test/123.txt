@@ -28,22 +28,6 @@ class ActionProvider {
     this.addMessage(message);
   };
 
-  showMetadataSubmenu = (jsonFileName) => {
-    const message = this.createChatBotMessage("Loading Metadata...", {
-      widget: "metadataSubmenuWidget",
-      payload: jsonFileName,
-    });
-    this.addMessage(message);
-  };
-
-  showToolSubmenu = (jsonFileName) => {
-    const message = this.createChatBotMessage("Loading Tool...", {
-      widget: "toolSubmenuWidget",
-      payload: jsonFileName,
-    });
-    this.addMessage(message);
-  };
-
   clearChat = () => {
     this.setState((prev) => ({
       ...prev,
@@ -81,7 +65,7 @@ class MessageParser {
     } else if (lowerCaseMessage.includes("tool")) {
       this.actionProvider.showToolsMenu();
     } else {
-      this.actionProvider.greet(); // default menu
+      this.actionProvider.greet();
     }
   }
 }
@@ -93,8 +77,6 @@ import { createChatBotMessage } from "react-chatbot-kit";
 import MainMenu from "./MainMenu";
 import MetadataWidget from "./MetadataWidget";
 import ToolsWidget from "./ToolsWidget";
-import MetadataSubmenuWidget from "./MetadataSubmenuWidget";
-import ToolSubmenuWidget from "./ToolSubmenuWidget";
 
 const config = {
   botName: "Metadata Bot",
@@ -104,34 +86,13 @@ const config = {
     }),
   ],
   customStyles: {
-    botMessageBox: {
-      backgroundColor: "#007bff",
-    },
-    chatButton: {
-      backgroundColor: "#007bff",
-    },
+    botMessageBox: { backgroundColor: "#007bff" },
+    chatButton: { backgroundColor: "#007bff" },
   },
   widgets: [
-    {
-      widgetName: "mainMenu",
-      widgetFunc: (props) => <MainMenu {...props} />,
-    },
-    {
-      widgetName: "metadataWidget",
-      widgetFunc: (props) => <MetadataWidget {...props} />,
-    },
-    {
-      widgetName: "toolsWidget",
-      widgetFunc: (props) => <ToolsWidget {...props} />,
-    },
-    {
-      widgetName: "metadataSubmenuWidget",
-      widgetFunc: (props) => <MetadataSubmenuWidget {...props} />,
-    },
-    {
-      widgetName: "toolSubmenuWidget",
-      widgetFunc: (props) => <ToolSubmenuWidget {...props} />,
-    },
+    { widgetName: "mainMenu", widgetFunc: (props) => <MainMenu {...props} /> },
+    { widgetName: "metadataWidget", widgetFunc: (props) => <MetadataWidget {...props} /> },
+    { widgetName: "toolsWidget", widgetFunc: (props) => <ToolsWidget {...props} /> },
   ],
 };
 
@@ -142,12 +103,8 @@ import React from "react";
 
 const MainMenu = (props) => {
   const options = [
-    { text: "Query/Code Generation", handler: () => props.actionProvider.showToolSubmenu("queryGeneration.json"), id: 1 },
-    { text: "Query/Code Summarization", handler: () => props.actionProvider.showToolSubmenu("querySummarization.json"), id: 2 },
-    { text: "Query/Code Conversion", handler: () => props.actionProvider.showToolSubmenu("queryConversion.json"), id: 3 },
-    { text: "Query/Code Optimization", handler: () => props.actionProvider.showToolSubmenu("queryOptimization.json"), id: 4 },
-    { text: "Metadata - Brokerage Dataset", handler: () => props.actionProvider.showMetadataSubmenu("brokerage.json"), id: 5 },
-    { text: "Metadata - WIM Client Dataset", handler: () => props.actionProvider.showMetadataSubmenu("wimClient.json"), id: 6 },
+    { text: "Help about Tool", handler: props.actionProvider.showToolsMenu, id: 1 },
+    { text: "Metadata", handler: props.actionProvider.showMetadataMenu, id: 2 },
   ];
 
   return (
@@ -175,32 +132,60 @@ const MainMenu = (props) => {
 export default MainMenu;
 
 
-import React from "react";
+
+
+import React, { useState } from "react";
+import brokerage from "./metadataJson/brokerage.json";
+import wimClient from "./metadataJson/wimClient.json";
 
 const MetadataWidget = (props) => {
+  const [openTable, setOpenTable] = useState(null);
+  const [selectedData, setSelectedData] = useState(null);
+
+  const toggleTable = (tableName, data) => {
+    setSelectedData(data);
+    setOpenTable(openTable === tableName ? null : tableName);
+  };
+
   const metadataOptions = [
-    { text: "Brokerage Dataset", file: "brokerage.json" },
-    { text: "WIM Client Dataset", file: "wimClient.json" },
+    { text: "Brokerage Dataset", data: brokerage, id: 1 },
+    { text: "WIM Client Dataset", data: wimClient, id: 2 },
   ];
 
   return (
     <div style={{ padding: "10px" }}>
-      <h4>Metadata Menu</h4>
-      {metadataOptions.map((option, index) => (
-        <button
-          key={index}
-          onClick={() => props.actionProvider.showMetadataSubmenu(option.file)}
-          style={{
-            margin: "5px",
-            padding: "8px 14px",
-            borderRadius: "6px",
-            border: "1px solid #28a745",
-            background: "#f0fff0",
-            cursor: "pointer",
-          }}
-        >
-          {option.text}
-        </button>
+      {metadataOptions.map((option) => (
+        <div key={option.id}>
+          <button
+            onClick={() => toggleTable(option.text, option.data)}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "10px",
+              background: "#e8f5e9",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: "bold",
+              marginTop: "5px",
+            }}
+          >
+            {option.text} {openTable === option.text ? "▲" : "▼"}
+          </button>
+
+          {openTable === option.text && selectedData && (
+            <div style={{ padding: "10px", background: "#fff", border: "1px solid #28a745", marginTop: "5px" }}>
+              <p><strong>Server:</strong> {selectedData.server}</p>
+              <p><strong>Schema:</strong> {selectedData.schema}</p>
+              <p><strong>Description:</strong> {selectedData.description}</p>
+              <p><strong>Columns:</strong></p>
+              <ul>
+                {selectedData.columns.map((col, i) => (
+                  <li key={i}><strong>{col.name}</strong>: {col.description}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       ))}
 
       <button
@@ -225,34 +210,58 @@ export default MetadataWidget;
 
 
 
-import React from "react";
+import React, { useState } from "react";
+import queryGeneration from "./toolsJson/queryGeneration.json";
+import querySummarization from "./toolsJson/querySummarization.json";
+import queryConversion from "./toolsJson/queryConversion.json";
+import queryOptimization from "./toolsJson/queryOptimization.json";
 
 const ToolsWidget = (props) => {
+  const [openTool, setOpenTool] = useState(null);
+  const [selectedTool, setSelectedTool] = useState(null);
+
+  const toggleTool = (toolName, data) => {
+    setSelectedTool(data);
+    setOpenTool(openTool === toolName ? null : toolName);
+  };
+
   const toolsOptions = [
-    { text: "Query/Code Generation", file: "queryGeneration.json" },
-    { text: "Query/Code Summarization", file: "querySummarization.json" },
-    { text: "Query/Code Conversion", file: "queryConversion.json" },
-    { text: "Query/Code Optimization", file: "queryOptimization.json" },
+    { text: "Query/Code Generation", data: queryGeneration, id: 1 },
+    { text: "Query/Code Summarization", data: querySummarization, id: 2 },
+    { text: "Query/Code Conversion", data: queryConversion, id: 3 },
+    { text: "Query/Code Optimization", data: queryOptimization, id: 4 },
   ];
 
   return (
     <div style={{ padding: "10px" }}>
-      <h4>Tools Menu</h4>
-      {toolsOptions.map((option, index) => (
-        <button
-          key={index}
-          onClick={() => props.actionProvider.showToolSubmenu(option.file)}
-          style={{
-            margin: "5px",
-            padding: "8px 14px",
-            borderRadius: "6px",
-            border: "1px solid #007bff",
-            background: "#f0f8ff",
-            cursor: "pointer",
-          }}
-        >
-          {option.text}
-        </button>
+      {toolsOptions.map((tool) => (
+        <div key={tool.id}>
+          <button
+            onClick={() => toggleTool(tool.text, tool.data)}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "10px",
+              background: "#e3f2fd",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: "bold",
+              marginTop: "5px",
+            }}
+          >
+            {tool.text} {openTool === tool.text ? "▲" : "▼"}
+          </button>
+
+          {openTool === tool.text && selectedTool && (
+            <div style={{ padding: "10px", background: "#fff", border: "1px solid #007bff", marginTop: "5px" }}>
+              <p><strong>Description:</strong> {selectedTool.description}</p>
+              <p><strong>Features:</strong></p>
+              <ul>
+                {selectedTool.features.map((f, i) => (<li key={i}>{f}</li>))}
+              </ul>
+            </div>
+          )}
+        </div>
       ))}
 
       <button
@@ -276,99 +285,3 @@ export default ToolsWidget;
 
 
 
-
-
-import React, { useEffect, useState } from "react";
-
-const MetadataSubmenuWidget = (props) => {
-  const [metadata, setMetadata] = useState(null);
-
-  useEffect(() => {
-    if (!props.widgetState || !props.widgetState.payload) return;
-
-    import(`./metadataJson/${props.widgetState.payload}`)
-      .then((data) => setMetadata(data.default))
-      .catch((err) => console.error(err));
-  }, [props.widgetState]);
-
-  if (!metadata) return <div>Loading...</div>;
-
-  return (
-    <div style={{ padding: "10px" }}>
-      <h4>{metadata.name}</h4>
-      <p><strong>Server:</strong> {metadata.server}</p>
-      <p><strong>Schema:</strong> {metadata.schema}</p>
-      <p><strong>Description:</strong> {metadata.description}</p>
-      <p><strong>Columns:</strong></p>
-      <ul>
-        {metadata.columns.map((col, i) => (
-          <li key={i}>
-            <strong>{col.name}</strong>: {col.description}
-          </li>
-        ))}
-      </ul>
-
-      <button
-        onClick={props.actionProvider.clearChat}
-        style={{
-          marginTop: "10px",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          border: "1px solid #28a745",
-          background: "#f0fff0",
-          cursor: "pointer",
-        }}
-      >
-        🔄 Back to Main Menu
-      </button>
-    </div>
-  );
-};
-
-export default MetadataSubmenuWidget;
-
-
-import React, { useEffect, useState } from "react";
-
-const ToolSubmenuWidget = (props) => {
-  const [toolData, setToolData] = useState(null);
-
-  useEffect(() => {
-    if (!props.widgetState || !props.widgetState.payload) return;
-
-    import(`./toolsJson/${props.widgetState.payload}`)
-      .then((data) => setToolData(data.default))
-      .catch((err) => console.error(err));
-  }, [props.widgetState]);
-
-  if (!toolData) return <div>Loading...</div>;
-
-  return (
-    <div style={{ padding: "10px" }}>
-      <h4>{toolData.name}</h4>
-      <p><strong>Description:</strong> {toolData.description}</p>
-      <p><strong>Features:</strong></p>
-      <ul>
-        {toolData.features.map((f, i) => (
-          <li key={i}>{f}</li>
-        ))}
-      </ul>
-
-      <button
-        onClick={props.actionProvider.clearChat}
-        style={{
-          marginTop: "10px",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          border: "1px solid #007bff",
-          background: "#f0f8ff",
-          cursor: "pointer",
-        }}
-      >
-        🔄 Back to Main Menu
-      </button>
-    </div>
-  );
-};
-
-export default ToolSubmenuWidget;
